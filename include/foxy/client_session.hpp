@@ -88,8 +88,10 @@ public:
           auto token = co_await this_coro::token();
 
           auto resolver  = tcp::resolver(s->stream.get_executor().context());
-          auto endpoints =
-            co_await resolver.async_resolve(host, service, token);
+          auto endpoints = co_await resolver.async_resolve(\
+            asio::string_view(host.data(), host.size()),
+            asio::string_view(service.data(), service.size()),
+            token);
 
           auto endpoint = co_await asio::async_connect(
             s->stream, endpoints, token);
