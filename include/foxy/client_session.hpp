@@ -88,7 +88,7 @@ public:
           auto token = co_await this_coro::token();
 
           auto resolver  = tcp::resolver(s->stream.get_executor().context());
-          auto endpoints = co_await resolver.async_resolve(\
+          auto endpoints = co_await resolver.async_resolve(
             asio::string_view(host.data(), host.size()),
             asio::string_view(service.data(), service.size()),
             token);
@@ -106,6 +106,11 @@ public:
 
     return init.result.get();
   }
+
+  // template <typename CompletionToken>
+  // auto async_send() {
+
+  // }
 };
 
 } // foxy
