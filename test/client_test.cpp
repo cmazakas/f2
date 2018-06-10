@@ -1,3 +1,4 @@
+#include <iostream>
 #include "foxy/client_session.hpp"
 
 #include <catch/catch.hpp>
@@ -13,10 +14,11 @@ TEST_CASE("Our HTTP client session") {
 
     auto s = foxy::client_session(io);
 
-    // s.async_connect(
-    //   [s](error_code const ec, tcp::endpoint const& endpoint) -> void {
+    s.async_connect(
+      "www.google.com", "80",
+      [s](error_code const ec, tcp::endpoint const) -> void {
 
-    //   });
+      });
 
     io.run();
   }
