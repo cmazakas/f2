@@ -66,19 +66,16 @@ public:
     CompletionToken&&      token
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
     CompletionToken,
-    void(boost::system::error_code, boost::asio::ip::tcp::endpoint const&)
+    void(boost::system::error_code, boost::asio::ip::tcp::endpoint)
   ) {
     namespace asio = boost::asio;
     using asio::ip::tcp;
 
     asio::async_completion<
       CompletionToken,
-      void(boost::system::error_code, boost::asio::ip::tcp::endpoint const&)
+      void(boost::system::error_code, boost::asio::ip::tcp::endpoint)
     >
     init(token);
-
-    // auto executor = asio::get_associated_executor(
-    //   init.completion_handler, s_->stream.get_executor());
 
     co_spawn(
       s_->strand,
@@ -137,8 +134,8 @@ public:
         try {
           auto token = co_await this_coro::token();
 
-          co_await http::async_write(s->stream, message, token);
-          co_await http::async_read(s->stream, s->buffer, parser, token);
+          (void ) co_await http::async_write(s->stream, message, token);
+          (void ) co_await http::async_read(s->stream, s->buffer, parser, token);
 
           s->stream.shutdown(tcp::socket::shutdown_send);
 

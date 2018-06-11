@@ -1,5 +1,7 @@
 #include <iostream>
 #include <boost/beast/http.hpp>
+
+#include "foxy/coroutine.hpp"
 #include "foxy/client_session.hpp"
 
 #include <catch/catch.hpp>
@@ -51,5 +53,40 @@ TEST_CASE("Our HTTP client session") {
 
     io.run();
     REQUIRE(was_valid_request);
+  }
+
+  SECTION("should work with coros as well") {
+
+    asio::io_context io;
+
+    foxy::co_spawn(
+      io,
+      [&]() -> foxy::awaitable<void> {
+
+        auto token = co_await foxy::this_coro::token();
+        auto s     = foxy::client_session(io);
+
+        auto message =
+          http::request<http::empty_body>(http::verb::get, "/", 11);
+
+        http::response_parser<http::string_body>
+        parser;
+
+        (void ) co_await s.async_connect("www.google.com", "80", token);
+        (void ) co_await s.async_send(message, parser, token);
+
+        auto msg = parser.release();
+
+        auto is_correct_status = (msg.result_int() == 200);
+        auto received_body     = (msg.body().size() > 0);
+
+        CHECK(is_correct_status);
+        CHECK(received_body);
+
+        co_return;
+      },
+      foxy::detached);
+
+    io.run();
   }
 }
