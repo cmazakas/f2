@@ -15,6 +15,8 @@
 
 #include <boost/system/error_code.hpp>
 
+#include <boost/beast/http/read.hpp>
+#include <boost/beast/http/write.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
 
 #include "foxy/coroutine.hpp"
@@ -75,15 +77,15 @@ public:
     >
     init(token);
 
-    auto executor = asio::get_associated_executor(
-      init.completion_handler, s_->stream.get_executor());
+    // auto executor = asio::get_associated_executor(
+    //   init.completion_handler, s_->stream.get_executor());
 
     co_spawn(
-      executor,
+      s_->strand,
       [
         host, service, s = s_,
         handler = std::move(init.completion_handler)
-      ]() mutable -> awaitable<void> {
+      ]() mutable -> awaitable<void, strand_type> {
         try {
           auto token = co_await this_coro::token();
 
@@ -107,10 +109,49 @@ public:
     return init.result.get();
   }
 
-  // template <typename CompletionToken>
-  // auto async_send() {
+  template <
+    typename Message,
+    typename Parser,
+    typename CompletionToken
+  >
+  auto async_send(
+    Message&          message,
+    Parser&           parser,
+    CompletionToken&& token
+  ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+    CompletionToken, void(boost::system::error_code)
+  ) {
+    namespace asio = boost::asio;
+    namespace http = boost::beast::http;
+    using asio::ip::tcp;
 
-  // }
+    asio::async_completion<CompletionToken, void(boost::system::error_code)>
+    init(token);
+
+    co_spawn(
+      s_->strand,
+      [
+        &message, &parser, s = s_,
+        handler = std::move(init.completion_handler)
+      ]() mutable -> awaitable<void, strand_type> {
+        try {
+          auto token = co_await this_coro::token();
+
+          co_await http::async_write(s->stream, message, token);
+          co_await http::async_read(s->stream, s->buffer, parser, token);
+
+          s->stream.shutdown(tcp::socket::shutdown_send);
+
+          co_return handler({});
+
+        } catch(boost::system::error_code const& ec) {
+          co_return handler(ec);
+        }
+      },
+      detached);
+
+    return init.result.get();
+  }
 };
 
 } // foxy
