@@ -8,12 +8,14 @@
 
 namespace asio = boost::asio;
 namespace http = boost::beast::http;
+namespace ssl  = asio::ssl;
 
 using asio::ip::tcp;
 using boost::system::error_code;
 
 TEST_CASE("Our HTTP client session") {
   SECTION("should be able to callout to google") {
+
     asio::io_context io;
 
     auto was_valid_request = false;
@@ -35,7 +37,7 @@ TEST_CASE("Our HTTP client session") {
         auto& m = *message;
         auto& p = *parser;
 
-        s.async_send(
+        s.async_write(
           m, p,
           [s, message, parser, &was_valid_request]
           (error_code const ec) -> void {
@@ -47,7 +49,7 @@ TEST_CASE("Our HTTP client session") {
             CHECK(is_correct_status);
             CHECK(received_body);
 
-            was_valid_request = true;
+            was_valid_request = is_correct_status && received_body;
         });
       });
 
@@ -58,6 +60,8 @@ TEST_CASE("Our HTTP client session") {
   SECTION("should work with coros as well") {
 
     asio::io_context io;
+
+    auto was_valid_request = false;
 
     foxy::co_spawn(
       io,
@@ -73,7 +77,7 @@ TEST_CASE("Our HTTP client session") {
         parser;
 
         (void ) co_await s.async_connect("www.google.com", "80", token);
-        (void ) co_await s.async_send(message, parser, token);
+        (void ) co_await s.async_write(message, parser, token);
 
         auto msg = parser.release();
 
@@ -83,10 +87,14 @@ TEST_CASE("Our HTTP client session") {
         CHECK(is_correct_status);
         CHECK(received_body);
 
+        was_valid_request = is_correct_status && received_body;
+
         co_return;
       },
       foxy::detached);
 
     io.run();
+
+    REQUIRE(was_valid_request);
   }
 }

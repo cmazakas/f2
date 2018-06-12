@@ -9,6 +9,8 @@
 #include <boost/asio/strand.hpp>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/ssl/stream.hpp>
+#include <boost/asio/ssl/context.hpp>
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/asio/associated_executor.hpp>
@@ -111,7 +113,7 @@ public:
     typename Parser,
     typename CompletionToken
   >
-  auto async_send(
+  auto async_write(
     Message&          message,
     Parser&           parser,
     CompletionToken&& token
@@ -135,7 +137,8 @@ public:
           auto token = co_await this_coro::token();
 
           (void ) co_await http::async_write(s->stream, message, token);
-          (void ) co_await http::async_read(s->stream, s->buffer, parser, token);
+          (void ) co_await http::async_read(
+            s->stream, s->buffer, parser, token);
 
           s->stream.shutdown(tcp::socket::shutdown_send);
 

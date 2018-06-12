@@ -1,3 +1,4 @@
+set(TESTING ON)
 set(CMAKE_BUILD_TYPE Debug)
 set(Boost_USE_STATIC_LIBS ON)
 set(CMAKE_C_COMPILER /Users/exbigboss/clang+llvm-6.0.0-x86_64-apple-darwin/bin/clang)

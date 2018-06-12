@@ -1,16 +1,15 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(foxy)
-
-find_path(CATCH_INCLUDE_DIR "catch.hpp")
-
-add_library(Catch INTERFACE)
-target_include_directories(Catch INTERFACE ${CATCH_INCLUDE_DIR})
+project(foxy LANGUAGES CXX)
 
 find_package(
   Boost 1.67
   REQUIRED
-    system
+    system date_time
+)
+
+find_package(
+  OpenSSL REQUIRED
 )
 
 add_library(
@@ -50,6 +49,8 @@ target_link_libraries(
   INTERFACE
   Boost::boost
   Boost::system
+  Boost::date_time
+  OpenSSL::SSL
 )
 
 # keep this around, just in case
@@ -57,26 +58,41 @@ if (MSVC)
   target_link_libraries(foxy INTERFACE Boost::disable_autolinking)
 endif()
 
-add_library(test_utils INTERFACE)
-target_include_directories(test_utils INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/test/include)
+if (TESTING)
 
-add_executable(
-  foxy_tests
+  find_package(Catch2 CONFIG REQUIRED)
 
-  ${CMAKE_CURRENT_SOURCE_DIR}/test/main.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/test/client_test.cpp
-)
+  add_library(test_utils INTERFACE)
+  target_include_directories(
+    test_utils
+    INTERFACE
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/include
+  )
 
-target_link_libraries(
-  foxy_tests
+  add_executable(
+    foxy_tests
 
-  PRIVATE
-  foxy
-  test_utils
-  Catch
-)
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/main.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/client_test.cpp
+  )
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake.modules/")
-enable_testing()
-include(ParseAndAddCatchTests)
-ParseAndAddCatchTests(foxy_tests)
+  target_link_libraries(
+    foxy_tests
+
+    PRIVATE
+    foxy
+    test_utils
+    Catch2::Catch
+  )
+
+  set(
+    CMAKE_MODULE_PATH
+    ${CMAKE_MODULE_PATH}
+    "${CMAKE_SOURCE_DIR}/cmake.modules/"
+  )
+
+  enable_testing()
+  include(ParseAndAddCatchTests)
+  ParseAndAddCatchTests(foxy_tests)
+
+endif()
