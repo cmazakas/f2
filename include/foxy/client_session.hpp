@@ -9,11 +9,8 @@
 #include <boost/asio/strand.hpp>
 #include <boost/asio/connect.hpp>
 #include <boost/asio/io_context.hpp>
-#include <boost/asio/ssl/stream.hpp>
-#include <boost/asio/ssl/context.hpp>
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include <boost/asio/associated_executor.hpp>
 
 #include <boost/system/error_code.hpp>
 
@@ -22,6 +19,7 @@
 #include <boost/beast/core/flat_buffer.hpp>
 
 #include "foxy/coroutine.hpp"
+#include "foxy/multi_stream.hpp"
 
 namespace foxy {
 
@@ -29,7 +27,7 @@ struct client_session {
 public:
   using timer_type  = boost::asio::steady_timer;
   using buffer_type = boost::beast::flat_buffer;
-  using stream_type = boost::asio::ip::tcp::socket;
+  using stream_type = multi_stream;
   using strand_type =
     boost::asio::strand<boost::asio::io_context::executor_type>;
 
@@ -95,7 +93,7 @@ public:
             token);
 
           auto endpoint = co_await asio::async_connect(
-            s->stream, endpoints, token);
+            s->stream.next_layer(), endpoints, token);
 
           co_return handler({}, endpoint);
 
@@ -140,7 +138,7 @@ public:
           (void ) co_await http::async_read(
             s->stream, s->buffer, parser, token);
 
-          s->stream.shutdown(tcp::socket::shutdown_send);
+          (void ) co_await s->stream.async_shutdown(token);
 
           co_return handler({});
 
