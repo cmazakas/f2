@@ -1,6 +1,7 @@
 #ifndef FOXY_CLIENT_SESSION_HPP_
 #define FOXY_CLIENT_SESSION_HPP_
 
+#include <iostream>
 #include <memory>
 #include <utility>
 #include <string_view>
@@ -11,6 +12,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/steady_timer.hpp>
+#include <boost/asio/executor.hpp>
 
 #include <boost/system/error_code.hpp>
 
@@ -29,7 +31,7 @@ public:
   using buffer_type = boost::beast::flat_buffer;
   using stream_type = multi_stream;
   using strand_type =
-    boost::asio::strand<boost::asio::io_context::executor_type>;
+    boost::asio::strand<boost::asio::executor>;
 
 private:
   struct session_state {
@@ -38,9 +40,22 @@ private:
     stream_type stream;
     strand_type strand;
 
+    session_state()                     = delete;
+    session_state(session_state const&) = default;
+    session_state(session_state&&)      = default;
+
+    explicit
     session_state(boost::asio::io_context& io)
     : timer(io)
     , stream(io)
+    , strand(stream.get_executor())
+    {
+    }
+
+    explicit
+    session_state(boost::asio::io_context& io, boost::asio::ssl::context& ctx)
+    : timer(io)
+    , stream(io, ctx)
     , strand(stream.get_executor())
     {
     }
@@ -56,6 +71,12 @@ public:
   explicit
   client_session(boost::asio::io_context& io)
   : s_(std::make_shared<session_state>(io))
+  {
+  }
+
+  explicit
+  client_session(boost::asio::io_context& io, boost::asio::ssl::context& ctx)
+  : s_(std::make_shared<session_state>(io, ctx))
   {
   }
 
@@ -86,14 +107,35 @@ public:
         try {
           auto token = co_await this_coro::token();
 
+          auto host_str = std::string(host);
+
+          if (s->stream.encrypted()) {
+std::cout << "going to do SSL stuff now\n";
+            SSL_set_tlsext_host_name(
+              s->stream.ssl_stream().native_handle(), host_str.c_str());
+std::cout << "done with ssl stuff\n";
+          }
+
+std::cout << "resolving\n";
           auto resolver  = tcp::resolver(s->stream.get_executor().context());
+
           auto endpoints = co_await resolver.async_resolve(
             asio::string_view(host.data(), host.size()),
             asio::string_view(service.data(), service.size()),
             token);
+std::cout << "done resolving\n\n";
 
+std::cout << "connecting\n";
           auto endpoint = co_await asio::async_connect(
             s->stream.next_layer(), endpoints, token);
+std::cout << "done connecting\n\n";
+
+          if (s->stream.encrypted()) {
+std::cout << "performing ssl handshake\n";
+            (void ) co_await s->stream.ssl_stream().async_handshake(
+              ssl::stream_base::client, token);
+std::cout << "done with ssl handshake\n\n";
+          }
 
           co_return handler({}, endpoint);
 
@@ -134,16 +176,34 @@ public:
         try {
           auto token = co_await this_coro::token();
 
+std::cout << "writing...\n";
           (void ) co_await http::async_write(s->stream, message, token);
+std::cout << "done writing...\n\n";
+
+std::cout << "reading...\n";
           (void ) co_await http::async_read(
             s->stream, s->buffer, parser, token);
+std::cout << "done reading...\n\n";
 
-          (void ) co_await s->stream.async_shutdown(token);
+          if (s->stream.encrypted()) {
+std::cout << "async shutting down...\n";
+
+            try {
+              (void ) co_await s->stream.ssl_stream().async_shutdown(token);
+            } catch(...) {}
+
+std::cout << "done async shutting down\n\n";
+          } else {
+            s->stream.stream().shutdown(tcp::socket::shutdown_send);
+          }
 
           co_return handler({});
 
         } catch(boost::system::error_code const& ec) {
+std::cout << "error: " << ec.message() << "\n\n";
           co_return handler(ec);
+        } catch(std::exception const& err) {
+std::cout << "error: " << err.what() << "\n\n";
         }
       },
       detached);

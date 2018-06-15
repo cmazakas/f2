@@ -10,19 +10,35 @@
 #include <boost/asio/ssl/context.hpp>
 #include <boost/asio/async_result.hpp>
 #include <boost/system/error_code.hpp>
+#include <boost/asio/associated_executor.hpp>
 
 namespace foxy {
 
 struct multi_stream {
+
 public:
   using stream_type     = boost::asio::ip::tcp::socket;
-  using ssl_stream_type = boost::asio::ssl::stream<stream_type&>;
+  using ssl_stream_type = boost::asio::ssl::stream<boost::asio::ip::tcp::socket&>;
 
+private:
   stream_type                    stream_;
   std::optional<ssl_stream_type> ssl_stream_;
 
+public:
+  multi_stream()                    = delete;
+  multi_stream(multi_stream const&) = default;
+  multi_stream(multi_stream&&)      = default;
+
+  explicit
   multi_stream(boost::asio::io_context& io)
   : stream_(io)
+  {
+  }
+
+  explicit
+  multi_stream(boost::asio::io_context& io, boost::asio::ssl::context& ctx)
+  : stream_(io)
+  , ssl_stream_(std::in_place, stream_, ctx)
   {
   }
 
@@ -63,35 +79,15 @@ public:
   }
 
   auto next_layer() & -> stream_type& {
-    return ssl_stream_ ? ssl_stream_->next_layer() : stream_;
+    return stream_;// ? ssl_stream_->next_layer() : stream_;
   }
 
+  auto stream() & -> stream_type& {
+    return stream_;
+  }
 
-  template <typename CompletionToken>
-  auto async_shutdown(CompletionToken&& token) {
-
-    boost::asio::async_completion<
-      CompletionToken,
-      void(boost::system::error_code)
-    > init(token);
-
-    co_spawn(
-      this->get_executor(),
-      [&, handler = std::move(init.completion_handler)]
-      () mutable -> awaitable<void> {
-
-        auto token = co_await this_coro::token();
-        if (ssl_stream_) {
-          (void ) co_await ssl_stream_->async_shutdown(token);
-        } else {
-          stream_.shutdown(boost::asio::ip::tcp::socket::shutdown_send);
-        }
-
-        co_return handler({});
-      },
-      detached);
-
-    return init.result.get();
+  auto ssl_stream() & -> ssl_stream_type& {
+    return *ssl_stream_;
   }
 };
 

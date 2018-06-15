@@ -54,9 +54,9 @@ target_link_libraries(
 )
 
 # keep this around, just in case
-if (MSVC)
-  target_link_libraries(foxy INTERFACE Boost::disable_autolinking)
-endif()
+# if (MSVC)
+#   target_link_libraries(foxy INTERFACE Boost::disable_autolinking)
+# endif()
 
 if (TESTING)
 
