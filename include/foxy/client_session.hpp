@@ -90,6 +90,7 @@ public:
     void(boost::system::error_code, boost::asio::ip::tcp::endpoint)
   ) {
     namespace asio = boost::asio;
+    namespace ssl  = asio::ssl;
     using asio::ip::tcp;
 
     asio::async_completion<
