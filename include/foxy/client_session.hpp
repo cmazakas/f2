@@ -52,7 +52,7 @@ private:
     session_state(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
 
     template <typename CompletionToken>
-    auto post(CompletionToken&& token) {
+    auto post(CompletionToken&& token) -> void {
       auto executor =
         boost::asio::get_associated_executor(token, stream.get_executor());
 
@@ -109,7 +109,6 @@ public:
           }
 
           auto resolver  = tcp::resolver(s->stream.get_executor().context());
-
           auto endpoints = co_await resolver.async_resolve(
             asio::string_view(host.data(), host.size()),
             asio::string_view(service.data(), service.size()),
