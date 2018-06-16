@@ -60,6 +60,12 @@ target_link_libraries(
 
 if (TESTING)
 
+  find_package(
+    Boost 1.67
+    REQUIRED
+      coroutine
+  )
+
   find_package(Catch2 CONFIG REQUIRED)
 
   add_library(test_utils INTERFACE)
@@ -83,6 +89,7 @@ if (TESTING)
     foxy
     test_utils
     Catch2::Catch
+    Boost::coroutine
   )
 
   set(

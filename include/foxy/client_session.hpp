@@ -6,6 +6,7 @@
 #include <utility>
 #include <string_view>
 
+#include <boost/asio/post.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/connect.hpp>
@@ -49,6 +50,14 @@ private:
 
     explicit
     session_state(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
+
+    template <typename CompletionToken>
+    auto post(CompletionToken&& token) {
+      auto executor =
+        asio::get_associated_executor(token, stream.get_executor());
+
+      return asio::post(executor, std::forward<CompletionToken>(token));
+    }
   };
 
   std::shared_ptr<session_state> s_;
@@ -114,10 +123,22 @@ public:
               ssl::stream_base::client, token);
           }
 
-          co_return handler({}, endpoint);
+          auto executor =
+            asio::get_associated_executor(handler, s->stream.get_executor());
+
+          co_return s->post(
+            [endpoint = std::move(endpoint), handler = std::move(handler)]
+            () mutable {
+              handler({}, endpoint);
+            });
 
         } catch(boost::system::error_code const& ec) {
-          co_return handler(ec, tcp::endpoint());
+
+          co_return s->post(
+            [ec, handler = std::move(handler)]
+            () mutable {
+              handler(ec, tcp::endpoint());
+            });
         }
       },
       detached);
@@ -157,22 +178,50 @@ public:
           (void ) co_await http::async_read(
             s->stream, s->buffer, parser, token);
 
-          if (s->stream.encrypted()) {
-            try {
-              (void ) co_await s->stream.ssl_stream().async_shutdown(token);
-            } catch(...) {}
-
-          } else {
-            s->stream.stream().shutdown(tcp::socket::shutdown_send);
-          }
-
-          co_return handler({});
+          co_return s->post(
+            [handler = std::move(handler)]() mutable { handler({}); });
 
         } catch(boost::system::error_code const& ec) {
-          co_return handler(ec);
-        } catch(std::exception const&) {
 
+          co_return s->post(
+            [ec, handler = std::move(handler)]() mutable { handler(ec); });
         }
+      },
+      detached);
+
+    return init.result.get();
+  }
+
+  auto shutdown() -> void;
+
+  template <typename CompletionToken>
+  auto async_ssl_shutdown(CompletionToken&& token) {
+    namespace asio = boost::asio;
+    namespace http = boost::beast::http;
+    using asio::ip::tcp;
+
+    asio::async_completion<CompletionToken, void(boost::system::error_code)>
+    init(token);
+
+    co_spawn(
+      s_->strand,
+      [
+        s = s_,
+        handler = std::move(init.completion_handler)
+      ]() mutable -> awaitable<void> {
+
+        auto ec    = boost::system::error_code();
+        auto token = co_await this_coro::token();
+
+        auto error_token =
+          redirect_error_t<std::decay_t<decltype(token)>>(token, ec);
+
+        (void) s->stream.ssl_stream().async_shutdown(error_token);
+
+        s->post(
+          [ec, handler = std::move(handler)]() mutable -> void {
+            handler(ec);
+          });
       },
       detached);
 

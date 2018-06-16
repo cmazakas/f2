@@ -1,5 +1,6 @@
 #include <iostream>
 #include <boost/beast/http.hpp>
+#include <boost/asio/spawn.hpp>
 
 #include "foxy/coroutine.hpp"
 #include "foxy/client_session.hpp"
@@ -40,7 +41,10 @@ TEST_CASE("Our HTTP client session") {
         s.async_write(
           m, p,
           [s, message, parser, &was_valid_request]
-          (error_code const ec) -> void {
+          (error_code const ec) mutable -> void {
+
+            s.shutdown();
+
             auto msg = parser->release();
 
             auto is_correct_status = (msg.result_int() == 200);
@@ -63,12 +67,11 @@ TEST_CASE("Our HTTP client session") {
 
     auto was_valid_request = false;
 
-    foxy::co_spawn(
+    asio::spawn(
       io,
-      [&]() -> foxy::awaitable<void> {
+      [&](asio::yield_context yield_ctx) -> void {
 
-        auto token = co_await foxy::this_coro::token();
-        auto s     = foxy::client_session(io);
+        auto s = foxy::client_session(io);
 
         auto message =
           http::request<http::empty_body>(http::verb::get, "/", 11);
@@ -76,8 +79,9 @@ TEST_CASE("Our HTTP client session") {
         http::response_parser<http::string_body>
         parser;
 
-        (void ) co_await s.async_connect("www.google.com", "80", token);
-        (void ) co_await s.async_write(message, parser, token);
+        s.async_connect("www.google.com", "80", yield_ctx);
+        s.async_write(message, parser, yield_ctx);
+        s.shutdown();
 
         auto msg = parser.release();
 
@@ -89,9 +93,7 @@ TEST_CASE("Our HTTP client session") {
 
         was_valid_request = is_correct_status && received_body;
 
-        co_return;
-      },
-      foxy::detached);
+      });
 
     io.run();
 
@@ -121,6 +123,7 @@ TEST_CASE("Our HTTP client session") {
 
         (void ) co_await s.async_connect("www.google.com", "443", token);
         (void ) co_await s.async_write(message, parser, token);
+        (void ) co_await s.async_ssl_shutdown(token);
 
         auto msg = parser.release();
 
