@@ -54,9 +54,9 @@ private:
     template <typename CompletionToken>
     auto post(CompletionToken&& token) {
       auto executor =
-        asio::get_associated_executor(token, stream.get_executor());
+        boost::asio::get_associated_executor(token, stream.get_executor());
 
-      return asio::post(executor, std::forward<CompletionToken>(token));
+      return boost::asio::post(executor, std::forward<CompletionToken>(token));
     }
   };
 
