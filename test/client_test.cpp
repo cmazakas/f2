@@ -113,7 +113,6 @@ TEST_CASE("Our HTTP client session") {
         auto ctx = ssl::context(ssl::context::sslv23_client);
         auto s   = foxy::client_session(io, ctx);
 
-
         auto message =
           http::request<http::empty_body>(http::verb::get, "/", 11);
 
@@ -130,9 +129,6 @@ TEST_CASE("Our HTTP client session") {
 
         CHECK(is_correct_status);
         CHECK(received_body);
-
-        std::cout << std::boolalpha << "is_correct_status: " << is_correct_status << "\n";
-        std::cout << std::boolalpha << "received_body: " << received_body << "\n\n";
 
         was_valid_request = is_correct_status && received_body;
 
