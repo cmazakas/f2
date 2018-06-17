@@ -103,7 +103,7 @@ public:
 
           auto host_str = std::string(host);
 
-          if (s->stream.encrypted()) {
+          if (s->stream.is_ssl()) {
             SSL_set_tlsext_host_name(
               s->stream.ssl_stream().native_handle(), host_str.c_str());
           }
@@ -115,9 +115,9 @@ public:
             token);
 
           auto endpoint = co_await asio::async_connect(
-            s->stream.next_layer(), endpoints, token);
+            s->stream.stream(), endpoints, token);
 
-          if (s->stream.encrypted()) {
+          if (s->stream.is_ssl()) {
             (void ) co_await s->stream.ssl_stream().async_handshake(
               ssl::stream_base::client, token);
           }

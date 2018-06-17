@@ -187,7 +187,7 @@ TEST_CASE("Our HTTP client session") {
         was_valid_request = is_correct_status && received_body;
       });
 
-    std::thread t([&]() { io.run(); });
+    std::thread t([&] { io.run(); });
     io.run();
     t.join();
 

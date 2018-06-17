@@ -18,12 +18,8 @@ auto foxy::multi_stream::get_executor() -> executor_type {
   return stream_.get_executor();
 }
 
-auto foxy::multi_stream::encrypted() const -> bool {
+auto foxy::multi_stream::is_ssl() const -> bool {
   return static_cast<bool>(ssl_stream_);
-}
-
-auto foxy::multi_stream::next_layer() & -> stream_type& {
-  return stream_;// ? ssl_stream_->next_layer() : stream_;
 }
 
 auto foxy::multi_stream::stream() & -> stream_type& {
