@@ -15,6 +15,7 @@
 #include <boost/asio/async_result.hpp>
 #include <boost/asio/steady_timer.hpp>
 #include <boost/asio/associated_executor.hpp>
+#include <boost/asio/associated_allocator.hpp>
 
 #include <boost/system/error_code.hpp>
 
@@ -28,6 +29,7 @@
 namespace foxy {
 
 struct client_session {
+
 public:
   using timer_type  = boost::asio::steady_timer;
   using buffer_type = boost::beast::flat_buffer;
@@ -75,9 +77,9 @@ public:
 
   template <typename CompletionToken>
   auto async_connect(
-    std::string_view const host,
-    std::string_view const service,
-    CompletionToken&&      token
+    std::string const& host,
+    std::string const& service,
+    CompletionToken&&  token
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
     CompletionToken,
     void(boost::system::error_code, boost::asio::ip::tcp::endpoint)
@@ -98,14 +100,28 @@ public:
         host, service, s = s_,
         handler = std::move(init.completion_handler)
       ]() mutable -> awaitable<void, strand_type> {
+
+        auto executor =
+          asio::get_associated_executor(handler, s->stream.get_executor());
+
+        auto allocator = asio::get_associated_allocator(handler);
+
         try {
           auto token = co_await this_coro::token();
 
           auto host_str = std::string(host);
 
           if (s->stream.is_ssl()) {
-            SSL_set_tlsext_host_name(
-              s->stream.ssl_stream().native_handle(), host_str.c_str());
+            if (!SSL_set_tlsext_host_name(
+              s->stream.ssl_stream().native_handle(), host.c_str())
+            ) {
+              auto ec = boost::system::error_code();
+              ec.assign(
+                static_cast<int>(::ERR_get_error()),
+                asio::error::get_ssl_category());
+
+              throw ec;
+            }
           }
 
           auto resolver  = tcp::resolver(s->stream.get_executor().context());
@@ -122,22 +138,21 @@ public:
               ssl::stream_base::client, token);
           }
 
-          auto executor =
-            asio::get_associated_executor(handler, s->stream.get_executor());
-
-          co_return s->post(
+          executor.post(
             [endpoint = std::move(endpoint), handler = std::move(handler)]
             () mutable {
               handler({}, endpoint);
-            });
+            },
+           allocator);
 
         } catch(boost::system::error_code const& ec) {
 
-          co_return s->post(
+          executor.post(
             [ec, handler = std::move(handler)]
             () mutable {
               handler(ec, tcp::endpoint());
-            });
+            },
+            allocator);
         }
       },
       detached);
@@ -170,6 +185,12 @@ public:
         &message, &parser, s = s_,
         handler = std::move(init.completion_handler)
       ]() mutable -> awaitable<void, strand_type> {
+
+        auto executor =
+          asio::get_associated_executor(handler, s->stream.get_executor());
+
+        auto allocator = asio::get_associated_allocator(handler);
+
         try {
           auto token = co_await this_coro::token();
 
@@ -177,13 +198,15 @@ public:
           (void ) co_await http::async_read(
             s->stream, s->buffer, parser, token);
 
-          co_return s->post(
-            [handler = std::move(handler)]() mutable { handler({}); });
+          co_return executor.post(
+            [handler = std::move(handler)]() mutable { handler({}); },
+            allocator);
 
         } catch(boost::system::error_code const& ec) {
 
-          co_return s->post(
-            [ec, handler = std::move(handler)]() mutable { handler(ec); });
+          co_return executor.post(
+            [ec, handler = std::move(handler)]() mutable { handler(ec); },
+            allocator);
         }
       },
       detached);
@@ -209,6 +232,11 @@ public:
         handler = std::move(init.completion_handler)
       ]() mutable -> awaitable<void> {
 
+        auto executor =
+          asio::get_associated_executor(handler, s->stream.get_executor());
+
+        auto allocator = asio::get_associated_allocator(handler);
+
         auto ec    = boost::system::error_code();
         auto token = co_await this_coro::token();
 
@@ -217,10 +245,11 @@ public:
 
         (void) s->stream.ssl_stream().async_shutdown(error_token);
 
-        s->post(
+        executor.post(
           [ec, handler = std::move(handler)]() mutable -> void {
             handler(ec);
-          });
+          },
+          allocator);
       },
       detached);
 

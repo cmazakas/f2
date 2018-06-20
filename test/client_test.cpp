@@ -155,7 +155,7 @@ TEST_CASE("Our HTTP client session") {
 
     asio::spawn(
       io,
-      [&](asio::yield_context yield_ctx) -> void {
+      [&](asio::yield_context yield_ctx) mutable -> void {
         auto ctx = ssl::context(ssl::context::sslv23_client);
         auto s   = foxy::client_session(io, ctx);
 
