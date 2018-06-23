@@ -86,6 +86,7 @@ public:
     namespace asio  = boost::asio;
     namespace ssl   = asio::ssl;
     using asio::ip::tcp;
+    using boost::ignore_unused;
     using boost::system::error_code;
 
     asio::async_completion<
@@ -147,8 +148,10 @@ public:
         }
 
         if (s->stream.is_ssl()) {
-          (void ) co_await s->stream.ssl_stream().async_handshake(
-            ssl::stream_base::client, error_token);
+          ignore_unused(
+            co_await (s->stream)
+              .ssl_stream()
+              .async_handshake(ssl::stream_base::client, error_token));
 
           if (ec) {
             co_return asio::post(
@@ -182,6 +185,7 @@ public:
     namespace asio  = boost::asio;
     namespace http  = boost::beast::http;
     using asio::ip::tcp;
+    using boost::ignore_unused;
     using boost::system::error_code;
 
     asio::async_completion<WriteHandler, void(boost::system::error_code)>
@@ -203,7 +207,7 @@ public:
         auto error_token =
           redirect_error_t<std::decay_t<decltype(token)>>(token, ec);
 
-        boost::ignore_unused(
+        ignore_unused(
           co_await http::async_write(s->stream, message, error_token));
 
         if (ec) {
@@ -212,7 +216,7 @@ public:
             beast::bind_handler(std::move(handler), ec));
         }
 
-        boost::ignore_unused(
+        ignore_unused(
           co_await http::async_read(s->stream, s->buffer, parser, token));
 
         if (ec) {
