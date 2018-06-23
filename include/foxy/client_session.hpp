@@ -1,19 +1,16 @@
 #ifndef FOXY_CLIENT_SESSION_HPP_
 #define FOXY_CLIENT_SESSION_HPP_
 
-#include <iostream>
-#include <memory>
-#include <utility>
-#include <string_view>
-
 #include <boost/asio/post.hpp>
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/strand.hpp>
-#include <boost/asio/connect.hpp>
-#include <boost/asio/executor.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/async_result.hpp>
+
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/connect.hpp>
 #include <boost/asio/steady_timer.hpp>
+
+#include <boost/asio/strand.hpp>
+#include <boost/asio/executor.hpp>
 #include <boost/asio/associated_executor.hpp>
 #include <boost/asio/associated_allocator.hpp>
 
@@ -21,7 +18,16 @@
 
 #include <boost/beast/http/read.hpp>
 #include <boost/beast/http/write.hpp>
+
 #include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/core/bind_handler.hpp>
+
+#include <boost/core/ignore_unused.hpp>
+
+#include <memory>
+#include <utility>
+#include <iostream>
+#include <string_view>
 
 #include "foxy/coroutine.hpp"
 #include "foxy/multi_stream.hpp"
@@ -52,14 +58,6 @@ private:
 
     explicit
     session_state(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
-
-    template <typename CompletionToken>
-    auto post(CompletionToken&& token) -> void {
-      auto executor =
-        boost::asio::get_associated_executor(token, stream.get_executor());
-
-      return boost::asio::post(executor, std::forward<CompletionToken>(token));
-    }
   };
 
   std::shared_ptr<session_state> s_;
@@ -75,85 +73,93 @@ public:
   explicit
   client_session(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
 
-  template <typename CompletionToken>
+  template <typename ConnectHandler>
   auto async_connect(
-    std::string const& host,
-    std::string const& service,
-    CompletionToken&&  token
+    std::string      host,
+    std::string      service,
+    ConnectHandler&& connect_handler
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
-    CompletionToken,
+    ConnectHandler,
     void(boost::system::error_code, boost::asio::ip::tcp::endpoint)
   ) {
-    namespace asio = boost::asio;
-    namespace ssl  = asio::ssl;
+    namespace beast = boost::beast;
+    namespace asio  = boost::asio;
+    namespace ssl   = asio::ssl;
     using asio::ip::tcp;
+    using boost::system::error_code;
 
     asio::async_completion<
-      CompletionToken,
+      ConnectHandler,
       void(boost::system::error_code, boost::asio::ip::tcp::endpoint)
     >
-    init(token);
+    init(connect_handler);
 
     co_spawn(
       s_->strand,
       [
-        host, service, s = s_,
+        s       = s_,
+        host    = std::move(host),
+        service = std::move(service),
         handler = std::move(init.completion_handler)
       ]() mutable -> awaitable<void, strand_type> {
 
         auto executor =
           asio::get_associated_executor(handler, s->stream.get_executor());
 
-        auto allocator = asio::get_associated_allocator(handler);
+        auto token = co_await this_coro::token();
+        auto ec    = error_code();
 
-        try {
-          auto token = co_await this_coro::token();
+        auto error_token =
+          redirect_error_t<std::decay_t<decltype(token)>>(token, ec);
 
-          auto host_str = std::string(host);
+        if (s->stream.is_ssl()) {
+          auto const res = SSL_set_tlsext_host_name(
+            s->stream.ssl_stream().native_handle(), host.c_str());
 
-          if (s->stream.is_ssl()) {
-            if (!SSL_set_tlsext_host_name(
-              s->stream.ssl_stream().native_handle(), host.c_str())
-            ) {
-              auto ec = boost::system::error_code();
-              ec.assign(
-                static_cast<int>(::ERR_get_error()),
-                asio::error::get_ssl_category());
+          if (res != 1) {
+            ec.assign(
+              static_cast<int>(::ERR_get_error()),
+              asio::error::get_ssl_category());
 
-              throw ec;
-            }
+            co_return asio::post(
+              executor,
+              beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
           }
-
-          auto resolver  = tcp::resolver(s->stream.get_executor().context());
-          auto endpoints = co_await resolver.async_resolve(
-            asio::string_view(host.data(), host.size()),
-            asio::string_view(service.data(), service.size()),
-            token);
-
-          auto endpoint = co_await asio::async_connect(
-            s->stream.stream(), endpoints, token);
-
-          if (s->stream.is_ssl()) {
-            (void ) co_await s->stream.ssl_stream().async_handshake(
-              ssl::stream_base::client, token);
-          }
-
-          executor.post(
-            [endpoint = std::move(endpoint), handler = std::move(handler)]
-            () mutable {
-              handler({}, endpoint);
-            },
-           allocator);
-
-        } catch(boost::system::error_code const& ec) {
-
-          executor.post(
-            [ec, handler = std::move(handler)]
-            () mutable {
-              handler(ec, tcp::endpoint());
-            },
-            allocator);
         }
+
+        auto resolver  = tcp::resolver(s->stream.get_executor().context());
+        auto endpoints =
+          co_await resolver.async_resolve(host, service, error_token);
+
+        if (ec) {
+          co_return asio::post(
+            executor,
+            beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
+        }
+
+        auto endpoint = co_await asio::async_connect(
+          s->stream.stream(), endpoints, error_token);
+
+        if (ec) {
+          co_return asio::post(
+            executor,
+            beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
+        }
+
+        if (s->stream.is_ssl()) {
+          (void ) co_await s->stream.ssl_stream().async_handshake(
+            ssl::stream_base::client, error_token);
+
+          if (ec) {
+            co_return asio::post(
+              executor,
+              beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
+          }
+        }
+
+        co_return asio::post(
+          executor,
+          beast::bind_handler(std::move(handler), error_code(), endpoint));
       },
       detached);
 
@@ -207,6 +213,9 @@ public:
           co_return executor.post(
             [ec, handler = std::move(handler)]() mutable { handler(ec); },
             allocator);
+        } catch(std::exception const& ex) {
+          std::cout << ex.what() << "\n\n";
+          throw ex;
         }
       },
       detached);
@@ -243,7 +252,7 @@ public:
         auto error_token =
           redirect_error_t<std::decay_t<decltype(token)>>(token, ec);
 
-        (void) s->stream.ssl_stream().async_shutdown(error_token);
+        (void ) s->stream.ssl_stream().async_shutdown(error_token);
 
         executor.post(
           [ec, handler = std::move(handler)]() mutable -> void {

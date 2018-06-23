@@ -18,21 +18,25 @@ using asio::ip::tcp;
 using boost::system::error_code;
 
 TEST_CASE("Our HTTP client session") {
+
+  // HTTP/1.1
+  auto const http_version_11 = 11;
+
   SECTION("should be able to callout to google") {
 
     asio::io_context io;
 
     auto was_valid_request = false;
+    auto s                 = foxy::client_session(io);
 
-    auto s = foxy::client_session(io);
     s.async_connect(
       "www.google.com", "80",
-      [s, &was_valid_request]
+      [=, &was_valid_request]
       (error_code const ec, tcp::endpoint const) mutable -> void {
 
         auto message = std::make_shared<
           http::request<http::empty_body>
-        >(http::verb::get, "/", 11);
+        >(http::verb::get, "/", http_version_11);
 
         auto parser = std::make_shared<
           http::response_parser<http::string_body>
@@ -72,12 +76,13 @@ TEST_CASE("Our HTTP client session") {
 
     asio::spawn(
       io,
-      [&](asio::yield_context yield_ctx) -> void {
+      [&, http_version_11](asio::yield_context yield_ctx) -> void {
 
         auto s = foxy::client_session(io);
 
         auto message =
-          http::request<http::empty_body>(http::verb::get, "/", 11);
+          http::request<http::empty_body>(
+            http::verb::get, "/", http_version_11);
 
         http::response_parser<http::string_body>
         parser;
@@ -119,7 +124,8 @@ TEST_CASE("Our HTTP client session") {
         auto s   = foxy::client_session(io, ctx);
 
         auto message =
-          http::request<http::empty_body>(http::verb::get, "/", 11);
+          http::request<http::empty_body>(
+            http::verb::get, "/", http_version_11);
 
         http::response_parser<http::string_body>
         parser;
@@ -155,12 +161,13 @@ TEST_CASE("Our HTTP client session") {
 
     asio::spawn(
       io,
-      [&](asio::yield_context yield_ctx) mutable -> void {
+      [&, http_version_11](asio::yield_context yield_ctx) mutable -> void {
         auto ctx = ssl::context(ssl::context::sslv23_client);
         auto s   = foxy::client_session(io, ctx);
 
         auto message =
-          http::request<http::empty_body>(http::verb::get, "/", 11);
+          http::request<http::empty_body>(
+            http::verb::get, "/", http_version_11);
 
         http::response_parser<http::string_body>
         parser;
@@ -187,7 +194,7 @@ TEST_CASE("Our HTTP client session") {
         was_valid_request = is_correct_status && received_body;
       });
 
-    std::thread t([&] { io.run(); });
+    auto t = std::thread([&] { io.run(); });
     io.run();
     t.join();
 
