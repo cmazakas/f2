@@ -37,10 +37,10 @@ namespace foxy {
 struct client_session {
 
 public:
-  using timer_type  = boost::asio::steady_timer;
-  using buffer_type = boost::beast::flat_buffer;
+  using timer_type  = ::boost::asio::steady_timer;
+  using buffer_type = ::boost::beast::flat_buffer;
   using stream_type = multi_stream;
-  using strand_type = boost::asio::strand<boost::asio::executor>;
+  using strand_type = ::boost::asio::strand<boost::asio::executor>;
 
 private:
   struct session_state {
@@ -169,21 +169,23 @@ public:
   template <
     typename Message,
     typename Parser,
-    typename CompletionToken
+    typename WriteHandler
   >
   auto async_write(
-    Message&          message,
-    Parser&           parser,
-    CompletionToken&& token
+    Message&       message,
+    Parser&        parser,
+    WriteHandler&& write_handler
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
-    CompletionToken, void(boost::system::error_code)
+    WriteHandler, void(boost::system::error_code)
   ) {
-    namespace asio = boost::asio;
-    namespace http = boost::beast::http;
+    namespace beast = boost::beast;
+    namespace asio  = boost::asio;
+    namespace http  = boost::beast::http;
     using asio::ip::tcp;
+    using boost::system::error_code;
 
-    asio::async_completion<CompletionToken, void(boost::system::error_code)>
-    init(token);
+    asio::async_completion<WriteHandler, void(boost::system::error_code)>
+    init(write_handler);
 
     co_spawn(
       s_->strand,
@@ -195,28 +197,33 @@ public:
         auto executor =
           asio::get_associated_executor(handler, s->stream.get_executor());
 
-        auto allocator = asio::get_associated_allocator(handler);
+        auto token = co_await this_coro::token();
+        auto ec    = error_code();
 
-        try {
-          auto token = co_await this_coro::token();
+        auto error_token =
+          redirect_error_t<std::decay_t<decltype(token)>>(token, ec);
 
-          (void ) co_await http::async_write(s->stream, message, token);
-          (void ) co_await http::async_read(
-            s->stream, s->buffer, parser, token);
+        boost::ignore_unused(
+          co_await http::async_write(s->stream, message, error_token));
 
-          co_return executor.post(
-            [handler = std::move(handler)]() mutable { handler({}); },
-            allocator);
-
-        } catch(boost::system::error_code const& ec) {
-
-          co_return executor.post(
-            [ec, handler = std::move(handler)]() mutable { handler(ec); },
-            allocator);
-        } catch(std::exception const& ex) {
-          std::cout << ex.what() << "\n\n";
-          throw ex;
+        if (ec) {
+          co_return asio::post(
+            executor,
+            beast::bind_handler(std::move(handler), ec));
         }
+
+        boost::ignore_unused(
+          co_await http::async_read(s->stream, s->buffer, parser, token));
+
+        if (ec) {
+          co_return asio::post(
+            executor,
+            beast::bind_handler(std::move(handler), ec));
+        }
+
+        co_return asio::post(
+          executor,
+          beast::bind_handler(std::move(handler), error_code()));
       },
       detached);
 
@@ -225,14 +232,21 @@ public:
 
   auto shutdown() -> void;
 
-  template <typename CompletionToken>
-  auto async_ssl_shutdown(CompletionToken&& token) {
-    namespace asio = boost::asio;
-    namespace http = boost::beast::http;
+  template <typename ShutdownHandler>
+  auto async_ssl_shutdown(
+    ShutdownHandler&& shutdown_handler
+  ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+    ShutdownHandler, void(boost::system::error_code)
+  ) {
+    namespace beast = boost::beast;
+    namespace asio  = boost::asio;
+    namespace http  = boost::beast::http;
     using asio::ip::tcp;
+    using boost::ignore_unused;
+    using boost::system::error_code;
 
-    asio::async_completion<CompletionToken, void(boost::system::error_code)>
-    init(token);
+    asio::async_completion<ShutdownHandler, void(boost::system::error_code)>
+    init(shutdown_handler);
 
     co_spawn(
       s_->strand,
@@ -244,21 +258,16 @@ public:
         auto executor =
           asio::get_associated_executor(handler, s->stream.get_executor());
 
-        auto allocator = asio::get_associated_allocator(handler);
-
-        auto ec    = boost::system::error_code();
         auto token = co_await this_coro::token();
+        auto ec    = error_code();
 
         auto error_token =
           redirect_error_t<std::decay_t<decltype(token)>>(token, ec);
 
-        (void ) s->stream.ssl_stream().async_shutdown(error_token);
+        ignore_unused(
+          s->stream.ssl_stream().async_shutdown(error_token));
 
-        executor.post(
-          [ec, handler = std::move(handler)]() mutable -> void {
-            handler(ec);
-          },
-          allocator);
+        asio::post(executor, beast::bind_handler(std::move(handler), ec));
       },
       detached);
 

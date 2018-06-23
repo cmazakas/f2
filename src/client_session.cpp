@@ -23,8 +23,8 @@ foxy::client_session::client_session(boost::asio::io_context& io)
 }
 
 foxy::client_session::client_session(
-  boost::asio::io_context&   io,
-  boost::asio::ssl::context& ctx)
+  ::boost::asio::io_context&   io,
+  ::boost::asio::ssl::context& ctx)
 : s_(std::make_shared<session_state>(io, ctx))
 {
 }
