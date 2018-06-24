@@ -107,11 +107,9 @@ public:
         auto executor =
           asio::get_associated_executor(handler, s->stream.get_executor());
 
-        auto token = co_await this_coro::token();
-        auto ec    = error_code();
-
-        auto error_token =
-          redirect_error_t<std::decay_t<decltype(token)>>(token, ec);
+        auto token       = co_await this_coro::token();
+        auto ec          = error_code();
+        auto error_token = redirect_error(token, ec);
 
         if (s->stream.is_ssl()) {
           auto const res = SSL_set_tlsext_host_name(
@@ -201,11 +199,9 @@ public:
         auto executor =
           asio::get_associated_executor(handler, s->stream.get_executor());
 
-        auto token = co_await this_coro::token();
-        auto ec    = error_code();
-
-        auto error_token =
-          redirect_error_t<std::decay_t<decltype(token)>>(token, ec);
+        auto token       = co_await this_coro::token();
+        auto ec          = error_code();
+        auto error_token = redirect_error(token, ec);
 
         ignore_unused(
           co_await http::async_write(s->stream, message, error_token));
@@ -217,7 +213,7 @@ public:
         }
 
         ignore_unused(
-          co_await http::async_read(s->stream, s->buffer, parser, token));
+          co_await http::async_read(s->stream, s->buffer, parser, error_token));
 
         if (ec) {
           co_return asio::post(
@@ -262,11 +258,9 @@ public:
         auto executor =
           asio::get_associated_executor(handler, s->stream.get_executor());
 
-        auto token = co_await this_coro::token();
-        auto ec    = error_code();
-
-        auto error_token =
-          redirect_error_t<std::decay_t<decltype(token)>>(token, ec);
+        auto token       = co_await this_coro::token();
+        auto ec          = error_code();
+        auto error_token = redirect_error(token, ec);
 
         ignore_unused(
           s->stream.ssl_stream().async_shutdown(error_token));

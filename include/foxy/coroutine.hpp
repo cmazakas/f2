@@ -16,6 +16,7 @@ namespace foxy {
   using boost::asio::experimental::detached;
   using boost::asio::experimental::awaitable;
   using boost::asio::experimental::redirect_error_t;
+  using boost::asio::experimental::redirect_error;
 } // foxy
 
 
