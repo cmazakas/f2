@@ -37,10 +37,10 @@ namespace foxy {
 struct client_session {
 
 public:
-  using timer_type  = ::boost::asio::steady_timer;
-  using buffer_type = ::boost::beast::flat_buffer;
+  using timer_type  = boost::asio::steady_timer;
+  using buffer_type = boost::beast::flat_buffer;
   using stream_type = multi_stream;
-  using strand_type = ::boost::asio::strand<boost::asio::executor>;
+  using strand_type = boost::asio::strand<boost::asio::executor>;
 
 private:
   struct session_state {
@@ -56,7 +56,6 @@ private:
     explicit
     session_state(boost::asio::io_context& io);
 
-    explicit
     session_state(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
   };
 

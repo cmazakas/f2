@@ -7,6 +7,14 @@
 
 using boost::system::error_code;
 
+namespace {
+
+auto handle_request() -> foxy::awaitable<void> {
+  co_return;
+}
+
+} // anonymous
+
 foxy::forward_proxy::state::state(
   boost::asio::io_context& io,
   endpoint_type const&     local_endpoint,
@@ -25,16 +33,18 @@ foxy::forward_proxy::forward_proxy(
 }
 
 auto foxy::forward_proxy::run() -> void {
+
+  auto& acceptor = s_->acceptor;
+  auto& socket   = s_->socket;
+  auto& io       = socket.get_executor().context();
+
   co_spawn(
-    s_->socket.get_executor().context(),
-    [s = s_]() mutable -> awaitable<void> {
+    io,
+    [&, s = s_]() mutable -> awaitable<void> {
 
       auto token       = co_await this_coro::token();
       auto ec          = error_code();
       auto error_token = redirect_error(token, ec);
-
-      auto& acceptor = s->acceptor;
-      auto& socket   = s->socket;
 
       while(true) {
         co_await acceptor.async_accept(socket.stream(), error_token);
@@ -42,6 +52,8 @@ auto foxy::forward_proxy::run() -> void {
           log_error(ec, "proxy server connection acceptance");
           continue;
         }
+
+        co_spawn(io, handle_request, detached);
       }
       co_return;
     },
