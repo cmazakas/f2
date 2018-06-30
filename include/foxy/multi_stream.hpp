@@ -22,6 +22,7 @@ namespace foxy {
  * multi_stream meets the requirements of AsyncStream
  **/
 struct multi_stream {
+
 public:
   using stream_type     = boost::asio::ip::tcp::socket;
   using ssl_stream_type =

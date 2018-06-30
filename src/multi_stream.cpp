@@ -5,7 +5,6 @@ foxy::multi_stream::multi_stream(boost::asio::io_context& io)
 {
 }
 
-
 foxy::multi_stream::multi_stream(
   boost::asio::io_context&   io,
   boost::asio::ssl::context& ctx)

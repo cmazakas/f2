@@ -82,6 +82,7 @@ public:
     ConnectHandler,
     void(boost::system::error_code, boost::asio::ip::tcp::endpoint)
   ) {
+
     namespace beast = boost::beast;
     namespace asio  = boost::asio;
     namespace ssl   = asio::ssl;
