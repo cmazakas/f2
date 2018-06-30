@@ -13,6 +13,12 @@ TEST_CASE("Our forward proxy") {
 
     asio::io_context io;
 
-    auto const src_addr = ip::make_address_v4("127.0.0.1");
+    auto const src_addr     = ip::make_address_v4("127.0.0.1");
+    auto const src_port     = static_cast<unsigned short>(1337);
+    auto const src_endpoint = tcp::endpoint(src_addr, src_port);
+
+    auto const reuse_addr = false;
+
+    foxy::forward_proxy proxy(io, src_endpoint, reuse_addr);
   }
 }
