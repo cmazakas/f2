@@ -44,7 +44,6 @@ public:
     endpoint_type const&     local_endpoint,
     bool const               reuse_addr);
 
-
   auto run() -> void;
 };
 

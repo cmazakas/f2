@@ -17,8 +17,10 @@ TEST_CASE("Our forward proxy") {
     auto const src_port     = static_cast<unsigned short>(1337);
     auto const src_endpoint = tcp::endpoint(src_addr, src_port);
 
-    auto const reuse_addr = false;
+    auto const reuse_addr = true;
 
     foxy::forward_proxy proxy(io, src_endpoint, reuse_addr);
+    proxy.run();
+    io.run();
   }
 }

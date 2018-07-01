@@ -11,6 +11,8 @@
 
 #include <boost/system/error_code.hpp>
 
+#include "foxy/experimental/core/ssl_stream.hpp"
+
 #include <utility>
 #include <optional>
 
@@ -26,7 +28,7 @@ struct multi_stream {
 public:
   using stream_type     = boost::asio::ip::tcp::socket;
   using ssl_stream_type =
-    boost::asio::ssl::stream<boost::asio::ip::tcp::socket&>;
+    boost::beast::ssl_stream<boost::asio::ip::tcp::socket&>;
   using executor_type   = boost::asio::ip::tcp::socket::executor_type;
 
 private:
@@ -35,8 +37,12 @@ private:
 
 public:
   multi_stream()                    = delete;
-  multi_stream(multi_stream const&) = default;
-  multi_stream(multi_stream&&)      = default;
+  multi_stream(multi_stream const&) = delete;
+  multi_stream(multi_stream&& other)
+  : stream_(std::move(other).stream_)
+  , ssl_stream_(std::move(other.ssl_stream_))
+  {
+  }
 
   explicit
   multi_stream(boost::asio::io_context& io);

@@ -69,6 +69,111 @@ public:
   server_session(boost::asio::io_context& io);
 
   server_session(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
+
+  auto shutdown() -> void;
+
+  template <
+    typename Parser,
+    typename ReadHandler
+  >
+  auto async_read(
+    Parser&       parser,
+    ReadHandler&& read_handler
+  ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+    ReadHandler, void(boost::system::error_code)
+  ) {
+
+    namespace beast = boost::beast;
+    namespace asio  = boost::asio;
+    namespace http  = beast::http;
+    using boost::system::error_code;
+    using boost::ignore_unused;
+
+    asio::async_completion<ReadHandler, void(boost::system::error_code)>
+    init(read_handler);
+
+    co_spawn(
+      s_->strand,
+      [
+        &parser,
+        s       = s_,
+        handler = std::move(init.completion_handler)
+      ]() mutable -> awaitable<void, strand_type> {
+
+        auto executor =
+          asio::get_associated_executor(handler, s->stream.get_executor());
+
+        auto token       = co_await this_coro::token();
+        auto ec          = error_code();
+        auto error_token = redirect_error(token, ec);
+
+        ignore_unused(
+          co_await http::async_read(s->stream, s->buffer, parser, error_token));
+
+        if (ec) {
+          co_return asio::post(
+            executor, beast::bind_handler(std::move(handler), ec));
+        }
+
+        co_return asio::post(
+          executor,
+          beast::bind_handler(std::move(handler), error_code()));
+      },
+      detached);
+
+    return init.result.get();
+  }
+
+  template <
+    typename Message,
+    typename WriteHandler
+  >
+  auto async_write(
+    Message&       message,
+    WriteHandler&& write_handler
+  ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+    WriteHandler, void(boost::system::error_code)
+  ) {
+
+    namespace beast = boost::beast;
+    namespace asio  = boost::asio;
+    namespace http  = beast::http;
+    using boost::system::error_code;
+    using boost::ignore_unused;
+
+    asio::async_completion<WriteHandler, void(boost::system::error_code)>
+    init(write_handler);
+
+    co_spawn(
+      s_->strand,
+      [
+        &message,
+        s       = s_,
+        handler = std::move(init.completion_handler)
+      ]() mutable -> awaitable<void, strand_type> {
+
+        auto executor =
+          asio::get_associated_executor(handler, s->stream.get_executor());
+
+        auto token       = co_await this_coro::token();
+        auto ec          = error_code();
+        auto error_token = redirect_error(token, ec);
+
+        ignore_unused(
+          co_await http::async_write(s->stream, message, error_token));
+
+        if (ec) {
+          co_return asio::post(
+            executor, beast::bind_handler(std::move(handler), ec));
+        }
+
+        co_return asio::post(
+          executor, beast::bind_handler(std::move(handler), error_code()));
+      },
+      detached);
+
+    return init.result.get();
+  }
 };
 
 } // foxy
