@@ -18,7 +18,6 @@ using boost::ignore_unused;
 namespace {
 
 auto handle_request(
-  asio::io_context&  io,
   foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
 
   using parser_type = http::request_parser<http::empty_body>;
@@ -27,9 +26,8 @@ auto handle_request(
   auto token       = co_await foxy::this_coro::token();
   auto error_token = foxy::redirect_error(token, ec);
 
-  auto session = foxy::server_session(io);
+  auto session = foxy::server_session(std::move(multi_stream));
   parser_type parser;
-  parser.skip(true);
 
   ignore_unused(
     co_await session.async_read(parser, error_token));
@@ -100,8 +98,8 @@ auto foxy::forward_proxy::run() -> void {
 
         co_spawn(
           io,
-          [&, multi_stream = std::move(socket)]() mutable {
-            return handle_request(io, std::move(multi_stream)); },
+          [multi_stream = std::move(socket)]() mutable {
+            return handle_request(std::move(multi_stream)); },
           detached);
       }
       co_return;

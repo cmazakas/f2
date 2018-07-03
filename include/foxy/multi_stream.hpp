@@ -18,11 +18,11 @@
 
 namespace foxy {
 
-/**
- * multi_stream is a dual-stream type that optionally supports TLS/SSL
- * stream operations
- * multi_stream meets the requirements of AsyncStream
- **/
+// multi_stream is a dual-stream type that optionally supports TLS/SSL stream
+// operations
+//
+// multi_stream meets the requirements of AsyncStream
+//
 struct multi_stream {
 
 public:

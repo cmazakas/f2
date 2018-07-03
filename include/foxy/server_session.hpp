@@ -43,19 +43,17 @@ public:
 
 private:
   struct session_state {
-    timer_type  timer;
-    buffer_type buffer;
     stream_type stream;
     strand_type strand;
+    timer_type  timer;
+    buffer_type buffer;
 
     session_state()                     = delete;
     session_state(session_state const&) = default;
     session_state(session_state&&)      = default;
 
     explicit
-    session_state(boost::asio::io_context& io);
-
-    session_state(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
+    session_state(stream_type stream_);
   };
 
   std::shared_ptr<session_state> s_;
@@ -66,9 +64,7 @@ public:
   server_session(server_session&&)      = default;
 
   explicit
-  server_session(boost::asio::io_context& io);
-
-  server_session(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
+  server_session(multi_stream stream);
 
   auto shutdown() -> void;
 

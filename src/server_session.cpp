@@ -1,30 +1,14 @@
 #include "foxy/server_session.hpp"
 
-foxy::server_session::session_state::session_state(boost::asio::io_context& io)
-: timer(io)
-, stream(io)
+foxy::server_session::session_state::session_state(stream_type stream_)
+: stream(std::move(stream_))
 , strand(stream.get_executor())
+, timer(stream.get_executor().context())
 {
 }
 
-foxy::server_session::session_state::session_state(
-  boost::asio::io_context&   io,
-  boost::asio::ssl::context& ctx)
-: timer(io)
-, stream(io, ctx)
-, strand(stream.get_executor())
-{
-}
-
-foxy::server_session::server_session(boost::asio::io_context& io)
-: s_(std::make_shared<session_state>(io))
-{
-}
-
-foxy::server_session::server_session(
-  boost::asio::io_context&   io,
-  boost::asio::ssl::context& ctx)
-: s_(std::make_shared<session_state>(io, ctx))
+foxy::server_session::server_session(stream_type stream)
+: s_(std::make_shared<session_state>(std::move(stream)))
 {
 }
 
