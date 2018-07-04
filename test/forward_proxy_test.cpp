@@ -41,6 +41,8 @@ TEST_CASE("Our forward proxy") {
         auto const num_reqs = 10;
         auto session        = foxy::client_session(io);
 
+        (void ) co_await session.async_connect("127.0.0.1", "1337", token);
+
         for (int i = 0; i < num_reqs; ++i) {
           auto req = http::request<http::empty_body>(http::verb::get, "/", 11);
           req.keep_alive(i != (num_reqs - 1));
@@ -48,7 +50,6 @@ TEST_CASE("Our forward proxy") {
           http::response_parser<http::string_body>
           res_parser;
 
-          (void ) co_await session.async_connect("127.0.0.1", "1337", token);
           (void ) co_await session.async_write(req, res_parser, token);
 
           auto res = res_parser.release();
