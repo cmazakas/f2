@@ -17,38 +17,54 @@ using boost::ignore_unused;
 
 namespace {
 
-auto handle_request(
-  foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
-
-  using parser_type = http::request_parser<http::empty_body>;
+auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
 
   auto ec          = error_code();
   auto token       = co_await foxy::this_coro::token();
   auto error_token = foxy::redirect_error(token, ec);
 
-  auto session = foxy::server_session(std::move(multi_stream));
-  parser_type parser;
+  // HTTP/1.1 defaults to persistent connections
+  //
+  auto session    = foxy::server_session(std::move(multi_stream));
+  auto keep_alive = true;
 
-  ignore_unused(
-    co_await session.async_read(parser, error_token));
+  while (keep_alive) {
+    http::request_parser<http::empty_body>
+    parser;
 
-  if (ec) {
-    co_return foxy::log_error(ec, "forward proxy request read");
-  }
+    ignore_unused(
+      co_await session.async_read(parser, error_token));
 
-  auto request = parser.get();
+    if (ec == http::error::end_of_stream) {
+      break;
+    }
 
-  // TODO: find out if we need to handle is_header_done() returning false
+    if (ec) {
+      co_return foxy::log_error(ec, "forward proxy request read");
+    }
 
-  auto const request_method = request.method();
-  if (request_method != http::verb::connect) {
-    auto response = http::response<http::string_body>(
-      http::status::method_not_allowed, 11,
-      "Invalid HTTP request method. Only CONNECT is supported");
+    // TODO: find out if we need to handle is_header_done() returning false for
+    // the parser/request (we probably do?)
+    //
+    auto request = parser.get();
+    keep_alive   = request.keep_alive();
 
-    response.prepare_payload();
+    // our forward proxy should only support the CONNECT method for the
+    // foreseeable future
+    //
+    if (request.method() != http::verb::connect) {
 
-    ignore_unused(co_await session.async_write(response, error_token));
+      auto response = http::response<http::string_body>(
+        http::status::method_not_allowed, 11,
+        "Invalid HTTP request method. Only CONNECT is supported");
+
+      response.prepare_payload();
+
+      ignore_unused(
+        co_await session.async_write(response, error_token));
+
+      continue;
+    }
   }
 
   session.shutdown();

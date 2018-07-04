@@ -27,7 +27,7 @@ TEST_CASE("Our forward proxy") {
 
     auto const reuse_addr = true;
 
-    auto was_valid_request = false;
+    auto was_valid_request = true;
 
     foxy::co_spawn(
       io,
@@ -38,20 +38,36 @@ TEST_CASE("Our forward proxy") {
 
         auto token = co_await foxy::this_coro::token();
 
-        auto req = http::request<http::empty_body>(http::verb::get, "/", 11);
+        auto const num_reqs = 10;
+        auto session        = foxy::client_session(io);
 
-        http::response_parser<http::string_body>
-        res_parser;
+        for (int i = 0; i < num_reqs; ++i) {
+          auto req = http::request<http::empty_body>(http::verb::get, "/", 11);
+          req.keep_alive(i != (num_reqs - 1));
 
-        auto session = foxy::client_session(io);
-        (void ) co_await session.async_connect("127.0.0.1", "1337", token);
-        (void ) co_await session.async_write(req, res_parser, token);
+          http::response_parser<http::string_body>
+          res_parser;
+
+          (void ) co_await session.async_connect("127.0.0.1", "1337", token);
+          (void ) co_await session.async_write(req, res_parser, token);
+
+          auto res = res_parser.release();
+
+          auto const invalid_method =
+            res.result() == http::status::method_not_allowed;
+
+          auto const is_valid_body =
+              res.body() ==
+              "Invalid HTTP request method. Only CONNECT is supported";
+
+          CHECK(invalid_method);
+          CHECK(is_valid_body);
+
+          was_valid_request =
+            was_valid_request && invalid_method && is_valid_body;
+        }
+
         session.shutdown();
-
-        auto res = res_parser.release();
-        CHECK(res.result() == http::status::method_not_allowed);
-
-        was_valid_request = true;
 
         io.stop();
         co_return;
