@@ -59,7 +59,7 @@ TEST_CASE("Our forward proxy") {
 
           auto const is_valid_body =
               res.body() ==
-              "Invalid HTTP request method. Only CONNECT is supported";
+              "Invalid HTTP request method. Only CONNECT is supported\n\n";
 
           CHECK(invalid_method);
           CHECK(is_valid_body);

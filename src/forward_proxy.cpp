@@ -4,12 +4,18 @@
 
 #include <boost/beast/http.hpp>
 
+#include <boost/spirit/home/x3.hpp>
+
+#include <tuple>
+#include <string>
 #include <iostream>
 
 #include "foxy/log.hpp"
 #include "foxy/coroutine.hpp"
 #include "foxy/server_session.hpp"
+#include "foxy/client_session.hpp"
 
+namespace x3   = boost::spirit::x3;
 namespace asio = boost::asio;
 namespace http = boost::beast::http;
 using boost::system::error_code;
@@ -25,15 +31,15 @@ auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
 
   // HTTP/1.1 defaults to persistent connections
   //
-  auto session    = foxy::server_session(std::move(multi_stream));
-  auto keep_alive = true;
+  auto server_session = foxy::server_session(std::move(multi_stream));
+  auto keep_alive     = true;
 
   while (keep_alive) {
     http::request_parser<http::empty_body>
     parser;
 
     ignore_unused(
-      co_await session.async_read(parser, error_token));
+      co_await server_session.async_read(parser, error_token));
 
     if (ec == http::error::end_of_stream) {
       break;
@@ -53,21 +59,50 @@ auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
     // foreseeable future
     //
     if (request.method() != http::verb::connect) {
-
       auto response = http::response<http::string_body>(
         http::status::method_not_allowed, 11,
-        "Invalid HTTP request method. Only CONNECT is supported");
+        "Invalid HTTP request method. Only CONNECT is supported\n\n");
 
       response.prepare_payload();
 
       ignore_unused(
-        co_await session.async_write(response, error_token));
+        co_await server_session.async_write(response, error_token));
 
       continue;
     }
+
+    // if we have the correct verb but the connection was signalled to _not_ be
+    // persistent, gracefully end the connection now
+    //
+    //if (!keep_alive) {
+    //  auto response = http::response<http::string_body>(
+    //    http::status::bad_request, 11,
+    //    "Connection must be persistent to allow proper tunneling\n\n");
+
+    //  response.prepare_payload();
+
+    //  ignore_unused(
+    //    co_await server_session.async_write(response, error_token));
+
+    //  break;
+    //}
+
+    //// attempt to establish the external connection and form the tunnel
+    ////
+    //auto const target = request.target();
+
+    //auto host = std::string();
+    //auto port = std::string();
+
+    //host.reserve(128);
+    //port.reserve(16);
+
+    //x3::parse(
+    //  target.begin(), target.end(),
+    //  *x3::char_);
   }
 
-  session.shutdown();
+  server_session.shutdown();
 
   co_return;
 }
