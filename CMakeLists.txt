@@ -25,7 +25,6 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/src/forward_proxy.cpp
 )
 
-
 if (MSVC)
   target_compile_options(foxy PUBLIC "/await")
 
@@ -84,6 +83,7 @@ if (TESTING)
     ${CMAKE_CURRENT_SOURCE_DIR}/test/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/client_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test/forward_proxy_test.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/remove_header_test.cpp
   )
 
   target_link_libraries(

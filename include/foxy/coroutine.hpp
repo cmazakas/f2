@@ -19,5 +19,4 @@ namespace foxy {
   using boost::asio::experimental::redirect_error;
 } // foxy
 
-
 #endif // FOXY_COROUTINE_HPP_

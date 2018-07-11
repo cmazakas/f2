@@ -5,6 +5,7 @@
 #include <boost/beast/http.hpp>
 
 #include <boost/spirit/home/x3.hpp>
+#include <boost/fusion/container/vector.hpp>
 
 #include <tuple>
 #include <string>
@@ -15,9 +16,12 @@
 #include "foxy/server_session.hpp"
 #include "foxy/client_session.hpp"
 
-namespace x3   = boost::spirit::x3;
-namespace asio = boost::asio;
-namespace http = boost::beast::http;
+namespace x3     = boost::spirit::x3;
+namespace asio   = boost::asio;
+namespace beast  = boost::beast;
+namespace http   = beast::http;
+namespace fusion = boost::fusion;
+
 using boost::system::error_code;
 using boost::ignore_unused;
 
@@ -74,32 +78,32 @@ auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
     // if we have the correct verb but the connection was signalled to _not_ be
     // persistent, gracefully end the connection now
     //
-    //if (!keep_alive) {
-    //  auto response = http::response<http::string_body>(
-    //    http::status::bad_request, 11,
-    //    "Connection must be persistent to allow proper tunneling\n\n");
+    if (!keep_alive) {
+      auto response = http::response<http::string_body>(
+        http::status::bad_request, 11,
+        "Connection must be persistent to allow proper tunneling\n\n");
 
-    //  response.prepare_payload();
+      response.prepare_payload();
 
-    //  ignore_unused(
-    //    co_await server_session.async_write(response, error_token));
+      ignore_unused(
+        co_await server_session.async_write(response, error_token));
 
-    //  break;
-    //}
+      break;
+    }
 
-    //// attempt to establish the external connection and form the tunnel
-    ////
-    //auto const target = request.target();
+    // attempt to establish the external connection and form the tunnel
+    //
+    auto const target = request.target();
 
-    //auto host = std::string();
-    //auto port = std::string();
+    auto host = std::string();
+    auto port = std::string();
 
-    //host.reserve(128);
-    //port.reserve(16);
+    auto host_and_port = fusion::vector<std::string&, std::string&>(host, port);
 
-    //x3::parse(
-    //  target.begin(), target.end(),
-    //  *x3::char_);
+    x3::parse(
+      target.begin(), target.end(), 
+      +x3::char_ >> -(":" >> +x3::char_),
+      host_and_port);
   }
 
   server_session.shutdown();
