@@ -11,6 +11,6 @@ TEST_CASE("Our connection header removal function") {
     fields.set(http::field::connection, "lol");
     fields.set(http::field::connection, "foo");
 
-    foxy::remove_header(http::field::connection, fields);
+    foxy::remove_connection_header(fields);
   }
 }
