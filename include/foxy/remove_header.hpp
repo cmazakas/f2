@@ -12,31 +12,64 @@
 
 namespace foxy {
 
+/**
+ * partition_connection_options is used to partition the Connection header
+ * field and any enumerated options from in_fields to out_fields
+ *
+ * This is primarily intended for use in intermediary servers where hop-by-hop
+ * semantics must be respected
+ */
 template <typename Fields>
-auto remove_connection_header(Fields& fields) {
+auto partition_connection_options(Fields& in_fields, Fields& out_fields) {
 
   namespace x3    = boost::spirit::x3;
   namespace http  = boost::beast::http;
   namespace range = boost::range;
 
-  auto tokens = std::vector<std::string>();
+  auto options = std::vector<std::string>();
 
   range::for_each(
-    fields.equal_range(http::field::connection),
+    in_fields.equal_range(http::field::connection),
     [&](auto const& field) {
       auto const val = field.value();
       if (val == "") { return; }
 
-      auto const token = +(x3::char_ - ',');
+      auto const option_rule = +(x3::char_ - ',');
 
+      // the ABNF grammar listed in rfc 7230 is as follows:
+      //
+      // BWS = OWS
+      // Connection = *( "," OWS ) connection-option *( OWS "," [ OWS
+      // connection-option ] )
+      //
+      // this then gives us our parsed list of connection options from every
+      // Connection header field listed in the input fields object
+      //
       x3::phrase_parse(
         val.begin(), val.end(),
-        *x3::lit(',') >> token >> *(',' >> token),
+        *x3::lit(',') >> option_rule >> *(',' >> option_rule),
         x3::ascii::space,
-        tokens);
+        options);
+
+      out_fields.insert(http::field::connection, field.value());
     });
 
-  range::for_each(tokens, [&](auto const& t) { fields.erase(t); });
+  // iterate the list of connection options, finding all headers from in_fields
+  // and then copying them into out_fields
+  //
+  range::for_each(
+    options,
+    [&](auto const& opt) {
+
+      range::for_each(
+        in_fields.equal_range(opt),
+        [&](auto const& in_field) {
+          out_fields.insert(in_field.name(), in_field.value());
+        });
+    });
+
+  range::for_each(options, [&](auto const& opt) { in_fields.erase(opt); });
+  in_fields.erase(http::field::connection);
 }
 
 } // foxy

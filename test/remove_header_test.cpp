@@ -7,19 +7,22 @@ namespace http = boost::beast::http;
 TEST_CASE("Our connection header removal function") {
   SECTION("should do as advertised") {
 
+    auto const* upgrade_field = ", , ,, , , ,,upgrade";
+
     auto fields = http::fields();
-    fields.insert(http::field::connection, "lol");
-    fields.insert(http::field::connection, "foo");
+    fields.insert(http::field::connection, upgrade_field);
+    fields.insert(http::field::upgrade, "h2c, HTTPS/1.3, IRC/6.9, RTA/x11");
 
-    fields.insert("lol", "muahahaha");
-    fields.insert("lol", "and another one too!");
+    auto proxy_fields = http::fields();
 
-    fields.insert("foo", "we'll only test one instance of this field");
+    foxy::partition_connection_options(fields, proxy_fields);
 
-    foxy::remove_connection_header(fields);
+    CHECK(fields[http::field::connection] == "");
+    CHECK(fields[http::field::upgrade] == "");
 
-    REQUIRE(fields["lol"] == "");
-    REQUIRE(fields["foo"] == "");
-    REQUIRE(fields[http::field::connection] != "");
+    CHECK(proxy_fields[http::field::connection] == upgrade_field);
+    CHECK(
+      proxy_fields[http::field::upgrade] ==
+      "h2c, HTTPS/1.3, IRC/6.9, RTA/x11");
   }
 }
