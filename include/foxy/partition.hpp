@@ -64,7 +64,7 @@ auto partition_connection_options(Fields& in_fields, Fields& out_fields) {
       range::for_each(
         in_fields.equal_range(opt),
         [&](auto const& in_field) {
-          out_fields.insert(in_field.name(), in_field.value());
+          out_fields.insert(opt, in_field.value());
         });
     });
 
