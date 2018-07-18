@@ -53,6 +53,12 @@ auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
       co_return foxy::log_error(ec, "forward proxy request read");
     }
 
+    // TODO: enforce finite message lengths because we so heavily rely on
+    // persistence in the case of our proxy and messages are only considered
+    // finite via Content-Length and Transfer-Encoding: chunked otherwise
+    // messages are only considered to end when the connection is closed
+    //
+
     // TODO: find out if we need to handle is_header_done() returning false for
     // the parser/request (we probably do?)
     //
@@ -98,12 +104,21 @@ auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
     auto host = std::string();
     auto port = std::string();
 
-    auto host_and_port = fusion::vector<std::string&, std::string&>(host, port);
+    auto host_and_port =
+      fusion::vector<std::string&, std::string&>(host, port);
 
     x3::parse(
-      target.begin(), target.end(), 
-      +x3::char_ >> -(":" >> +x3::char_),
+      target.begin(), target.end(),
+      +(x3::char_ - ":") >> -(":" >> +x3::uint_),
       host_and_port);
+
+    // TODO: add SSL context
+    //
+    auto client_session = foxy::client_session(
+      multi_stream.get_executor().context());
+
+    ignore_unused(
+      co_await client_session.async_connect(host, port, error_token));
   }
 
   server_session.shutdown();

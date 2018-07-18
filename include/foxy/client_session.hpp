@@ -213,7 +213,11 @@ public:
         }
 
         ignore_unused(
-          co_await http::async_read(s->stream, s->buffer, parser, error_token));
+          co_await http::async_read(
+            s->stream,
+            s->buffer,
+            parser,
+            error_token));
 
         if (ec) {
           co_return asio::post(
