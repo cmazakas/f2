@@ -168,6 +168,18 @@ public:
   }
 
   template <
+    typename Serializer,
+    typename WriteHeaderHandler
+  >
+  auto async_write_header(
+
+  ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+    WriteHeaderHandler, void(boost::system::error_code)
+  ) {
+
+  }
+
+  template <
     typename Message,
     typename Parser,
     typename WriteHandler

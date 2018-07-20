@@ -139,11 +139,17 @@ auto tunnel(
   auto token       = co_await foxy::this_coro::token();
   auto error_token = foxy::redirect_error(token, ec);
 
+  auto buf = std::array<char, 2048>();
+
   while (true) {
     http::request_parser<http::buffer_body>
     parser;
 
+    http::request_serializer<http::buffer_body, http::fields>
+    serializer(parser.get());
+
     server_session.async_read_header(parser, error_token);
+    // client_session.async_write_header();
 
   // partition the headers
   // the partitioning is currently coded backwards as it writes the
