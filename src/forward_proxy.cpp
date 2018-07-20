@@ -7,7 +7,7 @@
 #include <boost/spirit/home/x3.hpp>
 #include <boost/fusion/container/vector.hpp>
 
-#include <tuple>
+#include <array>
 #include <string>
 #include <iostream>
 
@@ -27,43 +27,35 @@ using boost::ignore_unused;
 
 namespace {
 
-auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
+// TODO: enforce finite message lengths because we so heavily rely on
+// persistence in the case of our proxy and messages are only considered
+// finite via Content-Length and Transfer-Encoding: chunked otherwise
+// messages are only considered to end when the connection is closed
+//
 
-  auto ec          = error_code();
+auto init(
+  foxy::server_session& server_session,
+  foxy::client_session& client_session,
+  error_code&           ec)-> foxy::awaitable<void> {
+
   auto token       = co_await foxy::this_coro::token();
   auto error_token = foxy::redirect_error(token, ec);
 
-  // HTTP/1.1 defaults to persistent connections
-  //
-  auto server_session = foxy::server_session(std::move(multi_stream));
-  auto keep_alive     = true;
-
-  while (keep_alive) {
+  while (true) {
     http::request_parser<http::empty_body>
     parser;
 
     ignore_unused(
       co_await server_session.async_read(parser, error_token));
 
-    if (ec == http::error::end_of_stream) {
+    if (ec) {
       break;
     }
-
-    if (ec) {
-      co_return foxy::log_error(ec, "forward proxy request read");
-    }
-
-    // TODO: enforce finite message lengths because we so heavily rely on
-    // persistence in the case of our proxy and messages are only considered
-    // finite via Content-Length and Transfer-Encoding: chunked otherwise
-    // messages are only considered to end when the connection is closed
-    //
 
     // TODO: find out if we need to handle is_header_done() returning false for
     // the parser/request (we probably do?)
     //
     auto request = parser.get();
-    keep_alive   = request.keep_alive();
 
     // our forward proxy should only support the CONNECT method for the
     // foreseeable future
@@ -84,7 +76,7 @@ auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
     // if we have the correct verb but the connection was signalled to _not_ be
     // persistent, gracefully end the connection now
     //
-    if (!keep_alive) {
+    if (!request.keep_alive()) {
       auto response = http::response<http::string_body>(
         http::status::bad_request, 11,
         "Connection must be persistent to allow proper tunneling\n\n");
@@ -112,18 +104,74 @@ auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
       +(x3::char_ - ":") >> -(":" >> +x3::uint_),
       host_and_port);
 
-    // TODO: add SSL context
-    //
-    auto client_session = foxy::client_session(
-      multi_stream.get_executor().context());
-
     ignore_unused(
       co_await client_session.async_connect(host, port, error_token));
+
+    if (ec) {
+      auto response = http::response<http::string_body>(
+        http::status::bad_request, 11,
+        "Unable to establish connection with remote host\n\n");
+
+      response.prepare_payload();
+
+      ignore_unused(
+        co_await server_session.async_write(response, error_token));
+
+      continue;
+    }
+
+    // we were able to successfully connect to the remote, reply with a 200
+    // and thus begin the tunneling
+    //
+    auto response = http::response<http::empty_body>(http::status::ok, 11);
+    ignore_unused(
+      co_await server_session.async_write(response, error_token));
+
+    break;
+  }
+}
+
+auto tunnel(
+  foxy::server_session& server_session,
+  foxy::client_session& client_session)-> foxy::awaitable<void> {
+
+  auto ec          = error_code();
+  auto token       = co_await foxy::this_coro::token();
+  auto error_token = foxy::redirect_error(token, ec);
+
+  while (true) {
+    http::request_parser<http::buffer_body>
+    parser;
+
+    server_session.async_read_header(parser, error_token);
+
+  // partition the headers
+  // the partitioning is currently coded backwards as it writes the
+  // hop-by-hop headers to the out object
+  //
+  // http::fields& server_headers = request.base();
+  }
+}
+
+auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
+
+  auto ec          = error_code();
+  auto token       = co_await foxy::this_coro::token();
+  auto error_token = foxy::redirect_error(token, ec);
+
+  auto server_session = foxy::server_session(std::move(multi_stream));
+
+  // TODO: add SSL context
+  //
+  auto client_session = foxy::client_session(
+    server_session.stream().get_executor().context());
+
+  co_await init(server_session, client_session, ec);
+  if (!ec) {
+    co_await tunnel(server_session, client_session);
   }
 
   server_session.shutdown();
-
-  co_return;
 }
 
 } // anonymous

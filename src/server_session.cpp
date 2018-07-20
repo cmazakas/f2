@@ -17,3 +17,7 @@ auto foxy::server_session::shutdown() -> void {
     .stream()
     .shutdown(boost::asio::ip::tcp::socket::shutdown_send);
 }
+
+auto foxy::server_session::stream() & -> stream_type& {
+  return s_->stream;
+}

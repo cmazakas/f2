@@ -67,6 +67,60 @@ public:
   server_session(multi_stream stream);
 
   auto shutdown() -> void;
+  auto stream() & -> stream_type&;
+
+  template <
+    typename Parser,
+    typename ReadHeaderHandler
+  >
+  auto async_read_header(
+    Parser& parser,
+    ReadHeaderHandler&& read_header_handler
+  ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+    ReadHeaderHandler,
+    void(boost::system::error_code)
+  ) {
+    namespace beast = boost::beast;
+    namespace asio  = boost::asio;
+    namespace http  = beast::http;
+    using boost::system::error_code;
+    using boost::ignore_unused;
+
+    asio::async_completion<ReadHeaderHandler, void(boost::system::error_code)>
+    init(read_header_handler);
+
+    co_spawn(
+      s_->strand,
+      [
+        &parser,
+        s       = s_,
+        handler = std::move(init.completion_handler)
+      ]() mutable -> awaitable<void, strand_type> {
+
+        auto executor =
+          asio::get_associated_executor(handler, s->stream.get_executor());
+
+        auto token       = co_await this_coro::token();
+        auto ec          = error_code();
+        auto error_token = redirect_error(token, ec);
+
+        ignore_unused(
+          co_await http::async_read_header(
+            s->stream, s->buffer, parser, error_token));
+
+        if (ec) {
+          co_return asio::post(
+            executor, beast::bind_handler(std::move(handler), ec));
+        }
+
+        co_return asio::post(
+          executor,
+          beast::bind_handler(std::move(handler), error_code()));
+      },
+      detached);
+
+    return init.result.get();
+  }
 
   template <
     typename Parser,
