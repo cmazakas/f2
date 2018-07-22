@@ -50,17 +50,19 @@ TEST_CASE("Our HTTP client session") {
           [s, message, parser, &was_valid_request]
           (error_code const ec) mutable -> void {
 
-            s.shutdown();
+          s.async_shutdown(
+            [s, message, parser, &was_valid_request]
+            (error_code const ec) mutable -> void {
+              auto msg = parser->release();
 
-            auto msg = parser->release();
+              auto is_correct_status = (msg.result_int() == 200);
+              auto received_body     = (msg.body().size() > 0);
 
-            auto is_correct_status = (msg.result_int() == 200);
-            auto received_body     = (msg.body().size() > 0);
+              CHECK(is_correct_status);
+              CHECK(received_body);
 
-            CHECK(is_correct_status);
-            CHECK(received_body);
-
-            was_valid_request = is_correct_status && received_body;
+              was_valid_request = is_correct_status && received_body;
+            });
         });
       });
 
@@ -89,7 +91,7 @@ TEST_CASE("Our HTTP client session") {
 
         s.async_connect("www.google.com", "80", yield_ctx);
         s.async_write(message, parser, yield_ctx);
-        s.shutdown();
+        s.async_shutdown(yield_ctx);
 
         auto msg = parser.release();
 
@@ -118,9 +120,11 @@ TEST_CASE("Our HTTP client session") {
       io,
       [&]() -> foxy::awaitable<void> {
 
-        auto token = co_await foxy::this_coro::token();
+        auto token       = co_await foxy::this_coro::token();
+        auto ec          = boost::system::error_code();
+        auto error_token = foxy::redirect_error(token, ec);
 
-        auto ctx = ssl::context(ssl::context::sslv23_client);
+        auto ctx = ssl::context(ssl::context::tlsv12_client);
         auto s   = foxy::client_session(io, ctx);
 
         auto message =
@@ -132,7 +136,7 @@ TEST_CASE("Our HTTP client session") {
 
         (void ) co_await s.async_connect("www.google.com", "443", token);
         (void ) co_await s.async_write(message, parser, token);
-        (void ) co_await s.async_ssl_shutdown(token);
+        (void ) co_await s.async_shutdown(error_token);
 
         auto msg = parser.release();
 
@@ -180,8 +184,12 @@ TEST_CASE("Our HTTP client session") {
         auto write_token = s.async_write(message, parser, asio::use_future);
         write_token.get();
 
-        auto ssl_token = s.async_ssl_shutdown(asio::use_future);
-        ssl_token.get();
+        try {
+          auto ssl_token = s.async_shutdown(asio::use_future);
+          ssl_token.get();
+        } catch(...) {
+
+        }
 
         auto msg = parser.release();
 

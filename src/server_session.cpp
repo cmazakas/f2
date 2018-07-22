@@ -1,5 +1,9 @@
 #include "foxy/server_session.hpp"
 
+#include <boost/asio/post.hpp>
+
+namespace asio = boost::asio;
+
 foxy::server_session::session_state::session_state(stream_type stream_)
 : stream(std::move(stream_))
 , strand(stream.get_executor())
@@ -13,11 +17,11 @@ foxy::server_session::server_session(stream_type stream)
 }
 
 auto foxy::server_session::shutdown() -> void {
-  (s_->stream)
-    .stream()
-    .shutdown(boost::asio::ip::tcp::socket::shutdown_send);
-}
-
-auto foxy::server_session::stream() & -> stream_type& {
-  return s_->stream;
+  asio::post(
+    s_->strand,
+    [&] {
+      (s_->stream)
+        .stream()
+        .shutdown(boost::asio::ip::tcp::socket::shutdown_send);
+    });
 }

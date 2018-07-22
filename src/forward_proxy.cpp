@@ -13,6 +13,7 @@
 
 #include "foxy/log.hpp"
 #include "foxy/coroutine.hpp"
+#include "foxy/partition.hpp"
 #include "foxy/server_session.hpp"
 #include "foxy/client_session.hpp"
 
@@ -142,24 +143,29 @@ auto tunnel(
   auto buf = std::array<char, 2048>();
 
   while (true) {
+
+    auto fields = http::fields();
+
     http::request_parser<http::buffer_body>
     parser;
 
     http::request_serializer<http::buffer_body, http::fields>
     serializer(parser.get());
 
-    server_session.async_read_header(parser, error_token);
-    // client_session.async_write_header();
+    co_await server_session.async_read_header(parser, error_token);
 
-  // partition the headers
-  // the partitioning is currently coded backwards as it writes the
-  // hop-by-hop headers to the out object
-  //
-  // http::fields& server_headers = request.base();
+    http::fields& req_fields = parser.get().base();
+    foxy::partition_connection_options(req_fields, fields);
+
+    co_await client_session.async_write_header(serializer, error_token);
+
+
   }
 }
 
-auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
+auto handle_request(
+  foxy::multi_stream multi_stream,
+  asio::io_context&  io) -> foxy::awaitable<void> {
 
   auto ec          = error_code();
   auto token       = co_await foxy::this_coro::token();
@@ -169,8 +175,7 @@ auto handle_request(foxy::multi_stream multi_stream) -> foxy::awaitable<void> {
 
   // TODO: add SSL context
   //
-  auto client_session = foxy::client_session(
-    server_session.stream().get_executor().context());
+  auto client_session = foxy::client_session(io);
 
   co_await init(server_session, client_session, ec);
   if (!ec) {
@@ -213,7 +218,7 @@ auto foxy::forward_proxy::run() -> void {
       auto ec          = error_code();
       auto error_token = redirect_error(token, ec);
 
-      while(true) {
+      while (true) {
         co_await acceptor.async_accept(socket.stream(), error_token);
         if (ec) {
           log_error(ec, "proxy server connection acceptance");
@@ -222,8 +227,8 @@ auto foxy::forward_proxy::run() -> void {
 
         co_spawn(
           io,
-          [multi_stream = std::move(socket)]() mutable {
-            return handle_request(std::move(multi_stream)); },
+          [&, multi_stream = std::move(socket)]() mutable {
+            return handle_request(std::move(multi_stream), io); },
           detached);
       }
       co_return;

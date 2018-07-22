@@ -172,11 +172,55 @@ public:
     typename WriteHeaderHandler
   >
   auto async_write_header(
-
+    Serializer&          serializer,
+    WriteHeaderHandler&& write_header_handler
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
     WriteHeaderHandler, void(boost::system::error_code)
   ) {
+    namespace beast = boost::beast;
+    namespace asio  = boost::asio;
+    namespace http  = boost::beast::http;
 
+    using boost::ignore_unused;
+    using boost::system::error_code;
+
+    asio::async_completion<WriteHeaderHandler, void(boost::system::error_code)>
+    init(write_header_handler);
+
+    co_spawn(
+      s_->strand,
+      [
+        &serializer, s = s_,
+        handler = std::move(init.completion_handler)
+      ]() mutable -> awaitable<void, strand_type> {
+
+        auto& stream = s->stream;
+
+        auto executor =
+          asio::get_associated_executor(handler, stream.get_executor());
+
+        auto token       = co_await this_coro::token();
+        auto ec          = error_code();
+        auto error_token = redirect_error(token, ec);
+
+        auto const bytes_transferred =
+          co_await http::async_write_header(stream, serializer, error_token);
+
+        ignore_unused(bytes_transferred);
+
+        if (ec) {
+          co_return asio::post(
+            executor,
+            beast::bind_handler(std::move(handler), ec));
+        }
+
+        co_return asio::post(
+          executor,
+          beast::bind_handler(std::move(handler), error_code()));
+      },
+      detached);
+
+    return init.result.get();
   }
 
   template <
@@ -246,10 +290,8 @@ public:
     return init.result.get();
   }
 
-  auto shutdown() -> void;
-
   template <typename ShutdownHandler>
-  auto async_ssl_shutdown(
+  auto async_shutdown(
     ShutdownHandler&& shutdown_handler
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
     ShutdownHandler, void(boost::system::error_code)
@@ -271,15 +313,23 @@ public:
         handler = std::move(init.completion_handler)
       ]() mutable -> awaitable<void> {
 
+        auto& multi_stream = s->stream;
+
         auto executor =
-          asio::get_associated_executor(handler, s->stream.get_executor());
+          asio::get_associated_executor(handler, multi_stream.get_executor());
 
         auto token       = co_await this_coro::token();
         auto ec          = error_code();
         auto error_token = redirect_error(token, ec);
 
-        ignore_unused(
-          s->stream.ssl_stream().async_shutdown(error_token));
+        if (multi_stream.is_ssl()) {
+          co_await multi_stream.ssl_stream().async_shutdown(error_token);
+
+        } else {
+          multi_stream
+            .stream()
+            .shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
+        }
 
         asio::post(executor, beast::bind_handler(std::move(handler), ec));
       },

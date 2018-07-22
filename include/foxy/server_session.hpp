@@ -67,7 +67,6 @@ public:
   server_session(multi_stream stream);
 
   auto shutdown() -> void;
-  auto stream() & -> stream_type&;
 
   template <
     typename Parser,
