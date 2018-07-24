@@ -72,6 +72,30 @@ TEST_CASE("Our forward proxy") {
           auto req = http::request<http::empty_body>(
             http::verb::connect, "/", 11);
 
+          http::response_parser<http::string_body> res_parser;
+
+          (void ) co_await session.async_write(req, res_parser, token);
+
+          auto res = res_parser.release();
+
+          auto const invalid_method =
+            res.result() == http::status::bad_request;
+
+          auto const is_valid_body =
+              res.body() ==
+             "Unable to establish connection with remote host\n\n";
+
+          CHECK(invalid_method);
+          CHECK(is_valid_body);
+
+          was_valid_request =
+            was_valid_request && invalid_method && is_valid_body;
+        }
+
+        {
+          auto req = http::request<http::empty_body>(
+            http::verb::connect, "/", 11);
+
           req.keep_alive(false);
 
           http::response_parser<http::string_body> res_parser;
@@ -95,6 +119,30 @@ TEST_CASE("Our forward proxy") {
         }
 
         co_await session.async_shutdown(error_token);
+
+
+        // (void ) co_await session.async_connect("127.0.0.1", "1337", token);
+
+        // {
+        //   auto req = http::request<http::empty_body>(
+        //     http::verb::connect, "www.google.com:80", 11);
+
+        //   http::response_parser<http::empty_body> res_parser;
+        //   res_parser.skip(true);
+
+        //   (void ) co_await session.async_write(req, res_parser, token);
+
+        //   auto res = res_parser.release();
+
+        //   auto const is_okay = (res.result() == http::status::ok);
+
+        //   CHECK(is_okay);
+
+        //   was_valid_request =
+        //     was_valid_request && is_okay;
+        // }
+
+        // co_await session.async_shutdown(error_token);
 
         io.stop();
         co_return;

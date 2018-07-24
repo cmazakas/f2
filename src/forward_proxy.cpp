@@ -102,13 +102,14 @@ auto init(
 
     x3::parse(
       target.begin(), target.end(),
-      +(x3::char_ - ":") >> -(":" >> +x3::uint_),
+      +(x3::char_ - ":") >> -(":" >> +x3::digit),
       host_and_port);
 
     ignore_unused(
       co_await client_session.async_connect(host, port, error_token));
 
     if (ec) {
+
       auto response = http::response<http::string_body>(
         http::status::bad_request, 11,
         "Unable to establish connection with remote host\n\n");
@@ -153,6 +154,7 @@ auto tunnel(
     serializer(parser.get());
 
     co_await server_session.async_read_header(parser, error_token);
+    if (ec) { break; }
 
     http::fields& req_fields = parser.get().base();
     foxy::partition_connection_options(req_fields, fields);
