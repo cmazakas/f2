@@ -17,24 +17,11 @@ add_library(
   foxy
 
   STATIC
-
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/client_session.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/coroutine.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/forward_proxy.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/log.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/multi_stream.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/partition.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/server_session.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/experimental/core/flat_stream.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/experimental/core/ssl_stream.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/experimental/core/detail/flat_stream.hpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/include/foxy/experimental/core/impl/flat_stream.ipp
-
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/multi_stream.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/client_session.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/server_session.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/log.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/forward_proxy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/multi_stream.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/server_session.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/log.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/forward_proxy.cpp
 )
 
 if (MSVC)
