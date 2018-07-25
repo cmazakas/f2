@@ -120,30 +120,6 @@ TEST_CASE("Our forward proxy") {
 
         co_await session.async_shutdown(error_token);
 
-
-        // (void ) co_await session.async_connect("127.0.0.1", "1337", token);
-
-        // {
-        //   auto req = http::request<http::empty_body>(
-        //     http::verb::connect, "www.google.com:80", 11);
-
-        //   http::response_parser<http::empty_body> res_parser;
-        //   res_parser.skip(true);
-
-        //   (void ) co_await session.async_write(req, res_parser, token);
-
-        //   auto res = res_parser.release();
-
-        //   auto const is_okay = (res.result() == http::status::ok);
-
-        //   CHECK(is_okay);
-
-        //   was_valid_request =
-        //     was_valid_request && is_okay;
-        // }
-
-        // co_await session.async_shutdown(error_token);
-
         io.stop();
         co_return;
       },

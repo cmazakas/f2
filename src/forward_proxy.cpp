@@ -109,7 +109,6 @@ auto init(
       co_await client_session.async_connect(host, port, error_token));
 
     if (ec) {
-
       auto response = http::response<http::string_body>(
         http::status::bad_request, 11,
         "Unable to establish connection with remote host\n\n");
