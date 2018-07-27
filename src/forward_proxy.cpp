@@ -159,6 +159,31 @@ auto tunnel(
     foxy::partition_connection_options(req_fields, fields);
 
     co_await client_session.async_write_header(serializer, error_token);
+    if (ec) { break; }
+
+    // and then we kind of copy-paste some code from the Beast HTTP relay
+    // example
+    //
+    auto& body = parser.get().body();
+    if (!parser.is_done()) {
+
+      body.data = buf.data();
+      body.size = buf.size();
+
+      co_await server_session.async_read(parser, error_token);
+      if (ec == http::error::need_buffer) {
+        ec = {};
+      }
+      if (ec) { break; }
+
+      body.size = buf.size() - body.size;
+      body.data = buf.data();
+      body.more = !parser.is_done();
+
+    } else {
+      body.data = nullptr;
+      body.size = 0;
+    }
 
 
   }

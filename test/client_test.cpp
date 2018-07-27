@@ -45,7 +45,7 @@ TEST_CASE("Our HTTP client session") {
         auto& m = *message;
         auto& p = *parser;
 
-        s.async_write(
+        s.async_request(
           m, p,
           [s, message, parser, &was_valid_request]
           (error_code const ec) mutable -> void {
@@ -90,7 +90,7 @@ TEST_CASE("Our HTTP client session") {
         parser;
 
         s.async_connect("www.google.com", "80", yield_ctx);
-        s.async_write(message, parser, yield_ctx);
+        s.async_request(message, parser, yield_ctx);
         s.async_shutdown(yield_ctx);
 
         auto msg = parser.release();
@@ -135,7 +135,7 @@ TEST_CASE("Our HTTP client session") {
         parser;
 
         (void ) co_await s.async_connect("www.google.com", "443", token);
-        (void ) co_await s.async_write(message, parser, token);
+        (void ) co_await s.async_request(message, parser, token);
         (void ) co_await s.async_shutdown(error_token);
 
         auto msg = parser.release();
@@ -181,7 +181,7 @@ TEST_CASE("Our HTTP client session") {
 
         connect_token.get();
 
-        auto write_token = s.async_write(message, parser, asio::use_future);
+        auto write_token = s.async_request(message, parser, asio::use_future);
         write_token.get();
 
         try {

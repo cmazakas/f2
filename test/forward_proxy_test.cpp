@@ -50,7 +50,7 @@ TEST_CASE("Our forward proxy") {
           http::response_parser<http::string_body>
           res_parser;
 
-          (void ) co_await session.async_write(req, res_parser, token);
+          (void ) co_await session.async_request(req, res_parser, token);
 
           auto res = res_parser.release();
 
@@ -74,7 +74,7 @@ TEST_CASE("Our forward proxy") {
 
           http::response_parser<http::string_body> res_parser;
 
-          (void ) co_await session.async_write(req, res_parser, token);
+          (void ) co_await session.async_request(req, res_parser, token);
 
           auto res = res_parser.release();
 
@@ -100,7 +100,7 @@ TEST_CASE("Our forward proxy") {
 
           http::response_parser<http::string_body> res_parser;
 
-          (void ) co_await session.async_write(req, res_parser, token);
+          (void ) co_await session.async_request(req, res_parser, token);
 
           auto res = res_parser.release();
 
