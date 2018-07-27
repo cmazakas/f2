@@ -285,7 +285,8 @@ public:
         auto error_token = redirect_error(token, ec);
 
         if (multi_stream.is_ssl()) {
-          co_await multi_stream.ssl_stream().async_shutdown(error_token);
+          ignore_unused(
+            co_await multi_stream.ssl_stream().async_shutdown(error_token));
 
         } else {
           multi_stream

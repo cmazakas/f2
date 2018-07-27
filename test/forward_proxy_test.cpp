@@ -118,7 +118,7 @@ TEST_CASE("Our forward proxy") {
             was_valid_request && invalid_method && is_valid_body;
         }
 
-        co_await session.async_shutdown(error_token);
+        (void ) co_await session.async_shutdown(error_token);
 
         io.stop();
         co_return;

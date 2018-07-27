@@ -152,13 +152,15 @@ auto tunnel(
     http::request_serializer<http::buffer_body, http::fields>
     serializer(parser.get());
 
-    co_await server_session.async_read_header(parser, error_token);
+    ignore_unused(
+      co_await server_session.async_read_header(parser, error_token));
     if (ec) { break; }
 
     http::fields& req_fields = parser.get().base();
     foxy::partition_connection_options(req_fields, fields);
 
-    co_await client_session.async_write_header(serializer, error_token);
+    ignore_unused(
+      co_await client_session.async_write_header(serializer, error_token));
     if (ec) { break; }
 
     // and then we kind of copy-paste some code from the Beast HTTP relay
@@ -170,7 +172,8 @@ auto tunnel(
       body.data = buf.data();
       body.size = buf.size();
 
-      co_await server_session.async_read(parser, error_token);
+      ignore_unused(
+        co_await server_session.async_read(parser, error_token));
       if (ec == http::error::need_buffer) {
         ec = {};
       }
@@ -245,7 +248,8 @@ auto foxy::forward_proxy::run() -> void {
       auto error_token = redirect_error(token, ec);
 
       while (true) {
-        co_await acceptor.async_accept(socket.stream(), error_token);
+        ignore_unused(
+          co_await acceptor.async_accept(socket.stream(), error_token));
         if (ec) {
           log_error(ec, "proxy server connection acceptance");
           break;
