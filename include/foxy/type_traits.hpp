@@ -24,8 +24,8 @@ namespace detail
 
 auto _is_strand(void const*) -> std::false_type;
 
-template <typename T, typename Executor>
-auto _is_strand(boost::asio::strand<Executor> const*) -> std::true_type;
+template <typename T>
+auto _is_strand(boost::asio::strand<T> const*) -> std::true_type;
 
 } // detail
 

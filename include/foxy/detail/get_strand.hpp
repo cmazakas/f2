@@ -6,6 +6,7 @@
 #include <boost/asio/executor.hpp>
 #include <boost/asio/associated_executor.hpp>
 #include <utility>
+#include <iostream>
 
 namespace foxy {
 namespace detail {
@@ -25,6 +26,7 @@ auto get_strand(Handler&& handler, Executor const& ex) {
     return asio::get_associated_executor(std::forward<Handler>(handler), ex);
 
   } else {
+
     return asio::strand<asio::executor>(
       asio::get_associated_executor(std::forward<Handler>(handler), ex));
   }
