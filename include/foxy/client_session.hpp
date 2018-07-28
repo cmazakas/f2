@@ -72,6 +72,10 @@ public:
   explicit
   client_session(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
 
+  // `async_connect` performs forward name resolution on the specified host
+  // and then attempts to form a TCP connection
+  // `service` is the same as the original `asio::async_connect` function
+  //
   template <typename ConnectHandler>
   auto async_connect(
     std::string      host,
@@ -79,94 +83,12 @@ public:
     ConnectHandler&& connect_handler
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
     ConnectHandler,
-    void(boost::system::error_code, boost::asio::ip::tcp::endpoint)
-  ) {
+    void(boost::system::error_code, boost::asio::ip::tcp::endpoint));
 
-    namespace beast = boost::beast;
-    namespace asio  = boost::asio;
-    namespace ssl   = asio::ssl;
-    using asio::ip::tcp;
-    using boost::ignore_unused;
-    using boost::system::error_code;
-
-    asio::async_completion<
-      ConnectHandler,
-      void(boost::system::error_code, boost::asio::ip::tcp::endpoint)
-    >
-    init(connect_handler);
-
-    co_spawn(
-      s_->strand,
-      [
-        s       = s_,
-        host    = std::move(host),
-        service = std::move(service),
-        handler = std::move(init.completion_handler)
-      ]() mutable -> awaitable<void, strand_type> {
-
-        auto executor =
-          asio::get_associated_executor(handler, s->stream.get_executor());
-
-        auto token       = co_await this_coro::token();
-        auto ec          = error_code();
-        auto error_token = redirect_error(token, ec);
-
-        if (s->stream.is_ssl()) {
-          auto const res = SSL_set_tlsext_host_name(
-            s->stream.ssl_stream().native_handle(), host.c_str());
-
-          if (res != 1) {
-            ec.assign(
-              static_cast<int>(::ERR_get_error()),
-              asio::error::get_ssl_category());
-
-            co_return asio::post(
-              executor,
-              beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
-          }
-        }
-
-        auto resolver  = tcp::resolver(s->stream.get_executor().context());
-        auto endpoints =
-          co_await resolver.async_resolve(host, service, error_token);
-
-        if (ec) {
-          co_return asio::post(
-            executor,
-            beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
-        }
-
-        auto endpoint = co_await asio::async_connect(
-          s->stream.stream(), endpoints, error_token);
-
-        if (ec) {
-          co_return asio::post(
-            executor,
-            beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
-        }
-
-        if (s->stream.is_ssl()) {
-          ignore_unused(
-            co_await (s->stream)
-              .ssl_stream()
-              .async_handshake(ssl::stream_base::client, error_token));
-
-          if (ec) {
-            co_return asio::post(
-              executor,
-              beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
-          }
-        }
-
-        co_return asio::post(
-          executor,
-          beast::bind_handler(std::move(handler), error_code(), endpoint));
-      },
-      detached);
-
-    return init.result.get();
-  }
-
+  // `async_write_header` mirrors the Beast function `http::async_write_header`
+  // and will write the header portion of the Serializer to the session's
+  // underlying stream object
+  //
   template <
     typename Serializer,
     typename WriteHeaderHandler
@@ -175,53 +97,7 @@ public:
     Serializer&          serializer,
     WriteHeaderHandler&& write_header_handler
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
-    WriteHeaderHandler, void(boost::system::error_code)
-  ) {
-    namespace beast = boost::beast;
-    namespace asio  = boost::asio;
-    namespace http  = boost::beast::http;
-
-    using boost::ignore_unused;
-    using boost::system::error_code;
-
-    asio::async_completion<WriteHeaderHandler, void(boost::system::error_code)>
-    init(write_header_handler);
-
-    co_spawn(
-      s_->strand,
-      [
-        &serializer, s = s_,
-        handler = std::move(init.completion_handler)
-      ]() mutable -> awaitable<void, strand_type> {
-
-        auto& stream = s->stream;
-
-        auto executor =
-          asio::get_associated_executor(handler, stream.get_executor());
-
-        auto token       = co_await this_coro::token();
-        auto ec          = error_code();
-        auto error_token = redirect_error(token, ec);
-
-        auto const bytes_transferred =
-          co_await http::async_write_header(stream, serializer, error_token);
-
-        ignore_unused(bytes_transferred);
-
-        if (ec) {
-          co_return asio::post(
-            executor,
-            beast::bind_handler(std::move(handler), ec));
-        }
-
-        co_return asio::post(
-          executor,
-          beast::bind_handler(std::move(handler), error_code()));
-      },
-      detached);
-
-    return init.result.get();
-  }
+    WriteHeaderHandler, void(boost::system::error_code));
 
   // `async_write` mirrors the Beast function, `http::async_write` and writes
   // the input Serializer through the `client_session` to the currently
