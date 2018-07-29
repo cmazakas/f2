@@ -285,3 +285,49 @@ auto foxy::client_session::async_request(
 
   return init.result.get();
 }
+
+template <typename ShutdownHandler>
+auto foxy::client_session::async_ssl_shutdown(
+  ShutdownHandler&& shutdown_handler
+) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+  ShutdownHandler, void(boost::system::error_code)
+) {
+  using asio::ip::tcp;
+  using boost::ignore_unused;
+  using boost::system::error_code;
+
+  namespace beast = boost::beast;
+  namespace asio  = boost::asio;
+  namespace http  = boost::beast::http;
+
+  asio::async_completion<ShutdownHandler, void(boost::system::error_code)>
+  init(shutdown_handler);
+
+  auto strand = foxy::detail::get_strand(
+    init.completion_handler, s_->stream.get_executor());
+
+  co_spawn(
+    strand,
+    [
+      s = s_,
+      handler = std::move(init.completion_handler)
+    ]() mutable -> awaitable<void> {
+
+      auto& multi_stream = s->stream;
+
+      auto executor =
+        asio::get_associated_executor(handler, multi_stream.get_executor());
+
+      auto token       = co_await this_coro::token();
+      auto ec          = error_code();
+      auto error_token = redirect_error(token, ec);
+
+      ignore_unused(
+        co_await multi_stream.ssl_stream().async_shutdown(error_token));
+
+      asio::post(executor, beast::bind_handler(std::move(handler), ec));
+    },
+    detached);
+
+  return init.result.get();
+}

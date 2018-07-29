@@ -62,13 +62,22 @@ private:
   std::shared_ptr<session_state> s_;
 
 public:
+  // client sessions cannot be default-constructed as they require an
+  // `io_context`
+  //
   client_session()                      = delete;
+
   client_session(client_session const&) = default;
   client_session(client_session&&)      = default;
 
   explicit
   client_session(boost::asio::io_context& io);
 
+  // when constructed with an SSL context, the `client_session` will perform an
+  // SSL handshake with the remote when calling `async_connect`
+  // client sessions constructed with an SSL context need to be shutdown using
+  // `async_ssl_shutdown`
+  //
   explicit
   client_session(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
 
@@ -128,54 +137,20 @@ public:
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
     WriteHandler, void(boost::system::error_code));
 
+  // use `shutdown` in the case of a non-SSL `client_session`
+  //
+  auto shutdown(boost::system::error_code& ec) -> void;
+
+  // `async_ssl_shutdown` is only meant to be called when the `client_session`
+  // was constructed with a valid `asio::ssl::context&`
+  // only this function must be called, calls to the `shutdown` will likely
+  // result in undefined behavior
+  //
   template <typename ShutdownHandler>
-  auto async_shutdown(
+  auto async_ssl_shutdown(
     ShutdownHandler&& shutdown_handler
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
-    ShutdownHandler, void(boost::system::error_code)
-  ) {
-    namespace beast = boost::beast;
-    namespace asio  = boost::asio;
-    namespace http  = boost::beast::http;
-    using asio::ip::tcp;
-    using boost::ignore_unused;
-    using boost::system::error_code;
-
-    asio::async_completion<ShutdownHandler, void(boost::system::error_code)>
-    init(shutdown_handler);
-
-    co_spawn(
-      s_->strand,
-      [
-        s = s_,
-        handler = std::move(init.completion_handler)
-      ]() mutable -> awaitable<void> {
-
-        auto& multi_stream = s->stream;
-
-        auto executor =
-          asio::get_associated_executor(handler, multi_stream.get_executor());
-
-        auto token       = co_await this_coro::token();
-        auto ec          = error_code();
-        auto error_token = redirect_error(token, ec);
-
-        if (multi_stream.is_ssl()) {
-          ignore_unused(
-            co_await multi_stream.ssl_stream().async_shutdown(error_token));
-
-        } else {
-          multi_stream
-            .stream()
-            .shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
-        }
-
-        asio::post(executor, beast::bind_handler(std::move(handler), ec));
-      },
-      detached);
-
-    return init.result.get();
-  }
+    ShutdownHandler, void(boost::system::error_code));
 };
 
 } // foxy

@@ -27,3 +27,11 @@ foxy::client_session::client_session(
 : s_(std::make_shared<session_state>(io, ctx))
 {
 }
+
+auto foxy::client_session::shutdown(boost::system::error_code& ec) -> void {
+  auto& multi_stream = s_->stream;
+
+  multi_stream
+    .stream()
+    .shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec);
+}
