@@ -22,6 +22,8 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/server_session.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/forward_proxy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/session_state.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/session.cpp
 )
 
 if (MSVC)

@@ -7,18 +7,6 @@
 
 namespace foxy {
 
-// ripped straight from cppreference
-//
-template <bool B>
-using bool_constant = std::integral_constant<bool, B>;
-
-template <typename B>
-struct negation : bool_constant<!bool(B::value)> {};
-
-template <typename B>
-constexpr
-bool const negation_v = negation<B>::value;
-
 namespace detail
 {
 
