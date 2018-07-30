@@ -113,12 +113,13 @@ auto foxy::client_session::async_request(
 ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
   WriteHandler, void(boost::system::error_code)
 ) {
+  using boost::asio::ip::tcp;
+  using boost::ignore_unused;
+  using boost::system::error_code;
+
   namespace beast = boost::beast;
   namespace asio  = boost::asio;
   namespace http  = boost::beast::http;
-  using asio::ip::tcp;
-  using boost::ignore_unused;
-  using boost::system::error_code;
 
   asio::async_completion<WriteHandler, void(boost::system::error_code)>
   init(write_handler);
@@ -177,7 +178,7 @@ auto foxy::client_session::async_ssl_shutdown(
 ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
   ShutdownHandler, void(boost::system::error_code)
 ) {
-  using asio::ip::tcp;
+  using boost::asio::ip::tcp;
   using boost::ignore_unused;
   using boost::system::error_code;
 

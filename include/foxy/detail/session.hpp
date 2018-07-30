@@ -3,6 +3,10 @@
 
 #include "foxy/coroutine.hpp"
 #include "foxy/detail/session_state.hpp"
+
+#include <boost/beast/http/read.hpp>
+#include <boost/beast/http/write.hpp>
+
 #include <memory>
 
 namespace foxy {

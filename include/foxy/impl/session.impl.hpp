@@ -1,4 +1,5 @@
 #include "foxy/detail/session.hpp"
+#include "foxy/detail/get_strand.hpp"
 
 template <
   typename Serializer,
