@@ -31,6 +31,9 @@ struct session_state {
   explicit
   session_state(boost::asio::io_context& io);
 
+  explicit
+  session_state(stream_type stream_);
+
   session_state(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
 };
 

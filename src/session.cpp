@@ -11,3 +11,8 @@ foxy::detail::session::session(
 : s_(std::make_shared<session_state>(io, ctx))
 {
 }
+
+foxy::detail::session::session(stream_type stream_)
+: s_(std::make_shared<session_state>(std::move(stream_)))
+{
+}

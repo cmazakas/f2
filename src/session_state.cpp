@@ -13,3 +13,9 @@ foxy::detail::session_state::session_state(
 , stream(io, ctx)
 {
 }
+
+foxy::detail::session_state::session_state(stream_type stream_)
+: timer(stream_.get_executor().context())
+, stream(std::move(stream_))
+{
+}

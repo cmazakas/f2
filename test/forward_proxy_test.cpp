@@ -70,7 +70,7 @@ TEST_CASE("Our forward proxy") {
 
         {
           auto req = http::request<http::empty_body>(
-            http::verb::connect, "www.google.com:1337", 11);
+            http::verb::connect, "/", 11);
 
           http::response_parser<http::string_body> res_parser;
 

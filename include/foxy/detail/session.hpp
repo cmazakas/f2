@@ -2,6 +2,7 @@
 #define FOXY_DETAIL_SESSION_HPP_
 
 #include "foxy/coroutine.hpp"
+#include "foxy/type_traits.hpp"
 #include "foxy/detail/session_state.hpp"
 
 #include <boost/beast/http/read.hpp>
@@ -33,6 +34,9 @@ public:
   explicit
   session(boost::asio::io_context& io);
 
+  explicit
+  session(stream_type stream_);
+
   // when constructed with an SSL context, the `session` will use the SSL side
   // of the `foxy::multi_stream`
   // sessions constructed with an SSL context need to be shutdown using
@@ -41,33 +45,63 @@ public:
   explicit
   session(boost::asio::io_context& io, boost::asio::ssl::context& ctx);
 
-  // `async_write_header` mirrors the Beast function `http::async_write_header`
-  // and will write the header portion of the Serializer to the session's
-  // underlying stream object
-  //
   template <
     typename Serializer,
     typename WriteHeaderHandler
   >
-  auto async_write_header(
+  auto
+  async_write_header(
     Serializer&          serializer,
     WriteHeaderHandler&& write_header_handler
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
     WriteHeaderHandler, void(boost::system::error_code));
 
-  // `async_write` mirrors the Beast function, `http::async_write` and writes
-  // the input Serializer through the `client_session` to the currently
-  // connected remote host
-  //
   template <
     typename Serializer,
-    typename WriteHandler
+    typename WriteHandler,
+    std::enable_if_t<foxy::is_serializer_v<Serializer>, int> = 0
   >
-  auto async_write(
+  auto
+  async_write(
     Serializer&    serializer,
     WriteHandler&& write_handler
   ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
       WriteHandler, void(boost::system::error_code));
+
+  template <
+    typename Message,
+    typename WriteHandler,
+    std::enable_if_t<foxy::is_message_v<Message>, int> = 0
+  >
+  auto
+  async_write(
+    Message&       message,
+    WriteHandler&& write_handler
+  ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+    WriteHandler, void(boost::system::error_code));
+
+  template <
+    typename Parser,
+    typename ReadHeaderHandler
+  >
+  auto
+  async_read_header(
+    Parser& parser,
+    ReadHeaderHandler&& read_header_handler
+  ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+    ReadHeaderHandler,
+    void(boost::system::error_code));
+
+  template <
+    typename Parser,
+    typename ReadHandler
+  >
+  auto
+  async_read(
+    Parser&       parser,
+    ReadHandler&& read_handler
+  ) & -> BOOST_ASIO_INITFN_RESULT_TYPE(
+    ReadHandler, void(boost::system::error_code));
 };
 
 } // detail

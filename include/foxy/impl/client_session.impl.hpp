@@ -47,26 +47,6 @@ auto foxy::client_session::async_connect(
       auto ec          = error_code();
       auto error_token = redirect_error(token, ec);
 
-      auto connected = false;
-
-      auto timer_op = foxy::co_spawn(
-        co_await foxy::this_coro::executor(),
-        [s, &connected]() -> foxy::awaitable<void, strand_type> {
-
-          using namespace std::chrono_literals;
-
-          auto token = co_await foxy::this_coro::token();
-          auto ec    = error_code();
-
-          s->timer.expires_after(1s);
-          co_await s->timer.async_wait(token);
-          if (!connected) {
-            s->stream.stream().shutdown(tcp::socket::shutdown_both, ec);
-            s->stream.stream().close();
-          }
-        },
-        co_await this_coro::token());
-
       if (s->stream.is_ssl()) {
         auto const res = SSL_set_tlsext_host_name(
           s->stream.ssl_stream().native_handle(), host.c_str());
@@ -91,18 +71,15 @@ auto foxy::client_session::async_connect(
           executor,
           beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
       }
-std::cout << "connecting to the remote\n\n";
+
       auto endpoint = co_await asio::async_connect(
         s->stream.stream(), endpoints, error_token);
-std::cout << "connected\n\n";
+
       if (ec) {
-std::cout<< "connection error: " << ec << "\n\n";
-        co_await timer_op;
         co_return asio::post(
           executor,
           beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
       }
-      connected = true;
 
       if (s->stream.is_ssl()) {
         ignore_unused(
@@ -116,8 +93,6 @@ std::cout<< "connection error: " << ec << "\n\n";
             beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
         }
       }
-
-      co_await timer_op;
 
       co_return asio::post(
         executor,
