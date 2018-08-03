@@ -2,7 +2,7 @@
 #include "foxy/detail/get_strand.hpp"
 #include <boost/asio/strand.hpp>
 #include <boost/asio/io_context.hpp>
-#include <catch/catch.hpp>
+#include <catch2/catch.hpp>
 
 namespace asio = boost::asio;
 

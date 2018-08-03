@@ -8,7 +8,7 @@
 #include "foxy/coroutine.hpp"
 #include "foxy/client_session.hpp"
 
-#include <catch/catch.hpp>
+#include <catch2/catch.hpp>
 
 namespace asio = boost::asio;
 namespace http = boost::beast::http;

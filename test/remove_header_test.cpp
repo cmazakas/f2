@@ -1,7 +1,7 @@
 #include "foxy/partition.hpp"
 
 #include <boost/beast/http.hpp>
-#include <catch/catch.hpp>
+#include <catch2/catch.hpp>
 
 namespace http = boost::beast::http;
 

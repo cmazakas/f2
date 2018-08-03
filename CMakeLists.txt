@@ -94,7 +94,7 @@ if (TESTING)
     PRIVATE
     foxy
     test_utils
-    Catch2::Catch
+    Catch2::Catch2
     Boost::coroutine
   )
 
