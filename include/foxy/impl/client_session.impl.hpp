@@ -1,8 +1,119 @@
 #include "foxy/client_session.hpp"
+
 #include "foxy/type_traits.hpp"
 #include "foxy/detail/get_strand.hpp"
 
-#include <chrono>
+#include <boost/asio/post.hpp>
+#include <boost/asio/coroutine.hpp>
+#include <boost/asio/bind_executor.hpp>
+#include <boost/asio/associated_executor.hpp>
+
+#include <boost/smart_ptr/make_unique.hpp>
+#include <boost/optional.hpp>
+
+namespace foxy {
+namespace detail {
+
+template <class Handler>
+struct async_connect_op : public boost::asio::coroutine {
+private:
+
+  struct frame;
+
+  std::shared_ptr<session_state> s_;
+  std::unique_ptr<frame>         frame_;
+
+  // frame impl
+  //
+  struct frame {
+    boost::optional<boost::asio::ip::tcp::resolver>               resolver;
+    boost::optional<boost::asio::ip::tcp::resolver::results_type> endpoints;
+    boost::optional<boost::asio::ip::tcp::endpoint>               endpoint;
+    boost::optional<std::string>                                  host;
+    boost::optional<std::string>                                  service;
+    Handler                                                       handler;
+
+    frame(Handler h_)
+    : handler(std::move(h_))
+    {};
+  };
+
+public:
+  async_connect_op()                        = delete;
+  async_connect_op(async_connect_op const&) = default;
+  async_connect_op(async_connect_op&&)      = default;
+
+  template <class DeducedHandler>
+  async_connect_op(
+    std::string                    host,
+    std::string                    service,
+    std::shared_ptr<session_state> s,
+    DeducedHandler&&               handler)
+  : s_(std::move(s))
+  , frame_(boost::make_unique<frame>(std::forward<DeducedHandler>(handler)))
+  {
+    frame_->host.emplace(std::move(host));
+    frame_->service.emplace(std::move(service));
+  }
+
+  using executor_type = boost::asio::associated_executor_t<
+    Handler, decltype(s_->stream.get_executor())>;
+
+  auto get_executor() const noexcept -> executor_type {
+    return boost::asio::get_associated_executor(
+      frame_->handler,
+      s_->stream.get_executor());
+  }
+
+  auto operator()(boost::system::error_code, boost::asio::ip::tcp::resolver::results_type) -> void {
+
+  }
+
+  #include <boost/asio/yield.hpp>
+  auto operator()(boost::system::error_code ec = {}) -> void {
+
+    using boost::asio::ip::tcp;
+    using boost::system::error_code;
+
+    namespace asio = boost::asio;
+
+    reenter(this) {
+      yield asio::post(std::move(*this));
+
+      if (s_->stream.is_ssl()) {
+        auto const res = SSL_set_tlsext_host_name(
+          s_->stream.ssl_stream().native_handle(), frame_->host->c_str());
+
+        if (res != 1) {
+          ec.assign(
+            static_cast<int>(::ERR_get_error()),
+            asio::error::get_ssl_category());
+
+          auto h = std::move(frame_->handler);
+          frame_.release();
+          return h(ec, tcp::endpoint());
+        }
+      }
+
+      frame_->resolver.emplace(s_->stream.get_executor().context());
+
+      yield {
+        auto const& host     = *(frame_->host);
+        auto const& svc      = *(frame_->service);
+        auto&       resolver = *(frame_->resolver);
+        auto        executor = this->get_executor();
+
+        resolver.async_resolve(
+          host, svc, std::move(*this));
+      }
+
+    }
+  }
+  #include <boost/asio/unyield.hpp>
+};
+
+} // detail
+} // foxy
 
 template <typename ConnectHandler>
 auto foxy::client_session::async_connect(
@@ -31,74 +142,82 @@ auto foxy::client_session::async_connect(
   auto strand = foxy::detail::get_strand(
     init.completion_handler, s_->stream.get_executor());
 
-  foxy::co_spawn(
-    strand,
-    [
-      s       = s_,
-      host    = std::move(host),
-      service = std::move(service),
-      handler = std::move(init.completion_handler)
-    ]() mutable -> foxy::awaitable<void, strand_type> {
+  using handler_type = BOOST_ASIO_HANDLER_TYPE(
+    ConnectHandler, void(error_code, tcp::endpoint));
 
-      auto executor =
-        asio::get_associated_executor(handler, s->stream.get_executor());
 
-      auto token       = co_await this_coro::token();
-      auto ec          = error_code();
-      auto error_token = redirect_error(token, ec);
+  foxy::detail::async_connect_op<handler_type>(
+    std::move(host), std::move(service), s_,
+    std::move(init.completion_handler))();
 
-      if (s->stream.is_ssl()) {
-        auto const res = SSL_set_tlsext_host_name(
-          s->stream.ssl_stream().native_handle(), host.c_str());
+  // foxy::co_spawn(
+  //   strand,
+  //   [
+  //     s       = s_,
+  //     host    = std::move(host),
+  //     service = std::move(service),
+  //     handler = std::move(init.completion_handler)
+  //   ]() mutable -> foxy::awaitable<void, strand_type> {
 
-        if (res != 1) {
-          ec.assign(
-            static_cast<int>(::ERR_get_error()),
-            asio::error::get_ssl_category());
+  //     auto executor =
+  //       asio::get_associated_executor(handler, s->stream.get_executor());
 
-          co_return asio::post(
-            executor,
-            beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
-        }
-      }
+  //     auto token       = co_await this_coro::token();
+  //     auto ec          = error_code();
+  //     auto error_token = redirect_error(token, ec);
 
-      auto resolver  = tcp::resolver(s->stream.get_executor().context());
-      auto endpoints =
-        co_await resolver.async_resolve(host, service, error_token);
+  //     if (s->stream.is_ssl()) {
+  //       auto const res = SSL_set_tlsext_host_name(
+  //         s->stream.ssl_stream().native_handle(), host.c_str());
 
-      if (ec) {
-        co_return asio::post(
-          executor,
-          beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
-      }
+  //       if (res != 1) {
+  //         ec.assign(
+  //           static_cast<int>(::ERR_get_error()),
+  //           asio::error::get_ssl_category());
 
-      auto endpoint = co_await asio::async_connect(
-        s->stream.stream(), endpoints, error_token);
+  //         co_return asio::post(
+  //           executor,
+  //           beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
+  //       }
+  //     }
 
-      if (ec) {
-        co_return asio::post(
-          executor,
-          beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
-      }
+  //     auto resolver  = tcp::resolver(s->stream.get_executor().context());
+  //     auto endpoints =
+  //       co_await resolver.async_resolve(host, service, error_token);
 
-      if (s->stream.is_ssl()) {
-        ignore_unused(
-          co_await (s->stream)
-            .ssl_stream()
-            .async_handshake(ssl::stream_base::client, error_token));
+  //     if (ec) {
+  //       co_return asio::post(
+  //         executor,
+  //         beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
+  //     }
 
-        if (ec) {
-          co_return asio::post(
-            executor,
-            beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
-        }
-      }
+  //     auto endpoint = co_await asio::async_connect(
+  //       s->stream.stream(), endpoints, error_token);
 
-      co_return asio::post(
-        executor,
-        beast::bind_handler(std::move(handler), error_code(), endpoint));
-    },
-    detached);
+  //     if (ec) {
+  //       co_return asio::post(
+  //         executor,
+  //         beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
+  //     }
+
+  //     if (s->stream.is_ssl()) {
+  //       ignore_unused(
+  //         co_await (s->stream)
+  //           .ssl_stream()
+  //           .async_handshake(ssl::stream_base::client, error_token));
+
+  //       if (ec) {
+  //         co_return asio::post(
+  //           executor,
+  //           beast::bind_handler(std::move(handler), ec, tcp::endpoint()));
+  //       }
+  //     }
+
+  //     co_return asio::post(
+  //       executor,
+  //       beast::bind_handler(std::move(handler), error_code(), endpoint));
+  //   },
+  //   detached);
 
   return init.result.get();
 }
