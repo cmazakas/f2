@@ -98,12 +98,6 @@ if (TESTING)
     Boost::coroutine
   )
 
-  set(
-    CMAKE_MODULE_PATH
-    ${CMAKE_MODULE_PATH}
-    "${CMAKE_SOURCE_DIR}/cmake.modules/"
-  )
-
   enable_testing()
   include(ParseAndAddCatchTests)
   ParseAndAddCatchTests(foxy_tests)
