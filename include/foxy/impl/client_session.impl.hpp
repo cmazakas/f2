@@ -14,6 +14,27 @@
 namespace foxy {
 namespace detail {
 
+template <class Executor, class Lambda>
+auto lift(Executor executor, Lambda lambda) {
+  struct callable : public Lambda {
+
+    Executor executor_;
+
+    callable(Executor e, Lambda l)
+    : Lambda(std::move(l))
+    , executor_(e)
+    {}
+
+    using Lambda::operator();
+    using executor_type = Executor;
+    auto get_executor() const noexcept -> executor_type {
+      return executor_;
+    }
+  };
+
+  return callable(executor, std::move(lambda));
+}
+
 template <class Handler>
 struct async_connect_op : public boost::asio::coroutine {
 private:
@@ -65,16 +86,13 @@ public:
       s_->stream.get_executor());
   }
 
-  auto operator()(boost::system::error_code, boost::asio::ip::tcp::resolver::results_type) -> void {
-
-  }
-
   #include <boost/asio/yield.hpp>
   auto operator()(boost::system::error_code ec = {}) -> void {
 
     using boost::asio::ip::tcp;
     using boost::system::error_code;
 
+    namespace ssl  = boost::asio::ssl;
     namespace asio = boost::asio;
 
     reenter(this) {
@@ -104,9 +122,58 @@ public:
         auto        executor = this->get_executor();
 
         resolver.async_resolve(
-          host, svc, std::move(*this));
+          host, svc, lift(
+            executor,
+            [self = std::move(*this)] (error_code ec, tcp::resolver::results_type endpoints) mutable -> void {
+              self.frame_->endpoints.emplace(std::move(endpoints));
+              self(ec);
+            }));
       }
 
+      if (ec) {
+        auto h = std::move(frame_->handler);
+        frame_.release();
+        return h(ec, tcp::endpoint());
+      }
+
+      yield {
+        auto& stream    = s_->stream.stream();
+        auto  endpoints = *(frame_->endpoints);
+        auto  executor  = this->get_executor();
+
+        asio::async_connect(
+          stream, std::move(endpoints),
+          lift(executor, [self = std::move(*this)](error_code ec, tcp::endpoint endpoint) mutable -> void {
+            self.frame_->endpoint.emplace(std::move(endpoint));
+            self(ec);
+          }));
+      }
+
+      if (ec) {
+        auto h = std::move(frame_->handler);
+        frame_.release();
+        return h(ec, tcp::endpoint());
+      }
+
+      if (s_->stream.is_ssl()) {
+        yield {
+          auto& ssl_stream = s_->stream.ssl_stream();
+          auto  executor   = this->get_executor();
+
+          ssl_stream.async_handshake(ssl::stream_base::client, std::move(*this));
+        }
+
+        if (ec) {
+          auto h = std::move(frame_->handler);
+          frame_.release();
+          return h(ec, tcp::endpoint());
+        }
+      }
+
+      auto h        = std::move(frame_->handler);
+      auto endpoint = std::move(*(frame_->endpoint));
+      frame_.release();
+      return h({}, std::move(endpoint));
     }
   }
   #include <boost/asio/unyield.hpp>
@@ -144,7 +211,6 @@ auto foxy::client_session::async_connect(
 
   using handler_type = BOOST_ASIO_HANDLER_TYPE(
     ConnectHandler, void(error_code, tcp::endpoint));
-
 
   foxy::detail::async_connect_op<handler_type>(
     std::move(host), std::move(service), s_,
